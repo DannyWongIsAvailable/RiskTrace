@@ -1,0 +1,20 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "risktrace",
+	"pages_build_output_dir": "./dist",
+	"compatibility_date": "2026-07-27",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"vars": {
+		"APP_NAME": "RiskTrace",
+		"APP_ENV": "production"
+	},
+	"d1_databases": [
+		{
+			"binding": "risktrace_db",
+			"database_name": "risktrace-db",
+			"database_id": "078db37b-e6b2-4fc7-b024-e759d806a54a"
+		}
+	]
+}
