@@ -2,9 +2,24 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "vue"],
   "env": {
-    "browser": true
+    "browser": true,
+    "node": true
   },
   "categories": {
-    "correctness": "error"
-  }
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "no-debugger": "error",
+    "no-duplicate-imports": "error",
+    "no-unreachable": "error"
+  },
+  "ignorePatterns": [
+    "dist/**",
+    ".wrangler/**",
+    "node_modules/**",
+    "src/auto-imports.d.ts",
+    "src/components.d.ts",
+    "functions/types.d.ts"
+  ]
 }

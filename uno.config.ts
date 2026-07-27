@@ -8,29 +8,24 @@ import {
 } from 'unocss'
 
 export default defineConfig({
-  presets: [
-    presetWind3(),
-    presetAttributify(),
-    presetIcons(),
-  ],
-
-  transformers: [
-    transformerDirectives(),
-    transformerVariantGroup(),
-  ],
-
+  presets: [presetWind3(), presetAttributify(), presetIcons()],
+  transformers: [transformerDirectives(), transformerVariantGroup()],
   shortcuts: {
-    'page-container': 'mx-auto max-w-7xl px-4 py-6',
-    'panel-card': 'rounded-xl bg-white p-5 shadow-sm',
-    'flex-center': 'flex items-center justify-center',
+    'rt-flex-center': 'flex items-center justify-center',
+    'rt-flex-between': 'flex items-center justify-between',
+    'rt-truncate': 'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap',
+    'rt-form-row': 'grid gap-4 md:grid-cols-2 xl:grid-cols-3',
   },
-
   theme: {
     colors: {
-      primary: '#409eff',
-      danger: '#f56c6c',
-      warning: '#e6a23c',
-      success: '#67c23a',
+      primary: 'var(--rt-color-primary-600)',
+      success: 'var(--rt-color-success-600)',
+      warning: 'var(--rt-color-warning-600)',
+      danger: 'var(--rt-color-danger-600)',
+      surface: 'var(--rt-bg-panel)',
+      page: 'var(--rt-bg-page)',
+      text: 'var(--rt-text-primary)',
+      muted: 'var(--rt-text-tertiary)',
     },
   },
 })

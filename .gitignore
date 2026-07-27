@@ -1,44 +1,45 @@
-# Logs
-logs
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.wrangler/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+
+# Logs and caches
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+.eslintcache
+*.timestamp-*-*.mjs
 
-node_modules
+# Operating system
 .DS_Store
-dist
-dist-ssr
-coverage
-*.local
+Thumbs.db
 
-# Editor directories and files
+# Editors
 .vscode/*
 !.vscode/extensions.json
-.idea
+!.vscode/settings.json
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-*.tsbuildinfo
-
-.eslintcache
-
-# Cypress
+# Test artifacts
 /cypress/videos/
 /cypress/screenshots/
-
-# Vitest
 __screenshots__/
-
-# Vite
-*.timestamp-*-*.mjs
-
-.dev.vars
-.dev.vars.*
-.wrangler/
-dist/

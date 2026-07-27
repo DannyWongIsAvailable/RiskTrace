@@ -1,0 +1,36 @@
+export {}
+
+declare module 'vue' {
+  export interface GlobalComponents {
+    AppLogo: typeof import('@/components/common/AppLogo.vue')['default']
+    AppSidebar: typeof import('@/components/layout/AppSidebar.vue')['default']
+    AppTopbar: typeof import('@/components/layout/AppTopbar.vue')['default']
+    BaseCard: typeof import('@/components/common/BaseCard.vue')['default']
+    BaseTableCard: typeof import('@/components/common/BaseTableCard.vue')['default']
+    ConfirmActionDialog: typeof import('@/components/common/ConfirmActionDialog.vue')['default']
+    DescriptionList: typeof import('@/components/common/DescriptionList.vue')['default']
+    EmptyState: typeof import('@/components/common/EmptyState.vue')['default']
+    ErrorState: typeof import('@/components/common/ErrorState.vue')['default']
+    FilterBar: typeof import('@/components/common/FilterBar.vue')['default']
+    InlineNotice: typeof import('@/components/common/InlineNotice.vue')['default']
+    LoadingState: typeof import('@/components/common/LoadingState.vue')['default']
+    MetricCard: typeof import('@/components/common/MetricCard.vue')['default']
+    PageHeader: typeof import('@/components/common/PageHeader.vue')['default']
+    PaginationBar: typeof import('@/components/common/PaginationBar.vue')['default']
+    SectionHeader: typeof import('@/components/common/SectionHeader.vue')['default']
+    StatusTag: typeof import('@/components/common/StatusTag.vue')['default']
+    ElButton: typeof import('element-plus')['ElButton']
+    ElDatePicker: typeof import('element-plus')['ElDatePicker']
+    ElDialog: typeof import('element-plus')['ElDialog']
+    ElForm: typeof import('element-plus')['ElForm']
+    ElFormItem: typeof import('element-plus')['ElFormItem']
+    ElInput: typeof import('element-plus')['ElInput']
+    ElOption: typeof import('element-plus')['ElOption']
+    ElPagination: typeof import('element-plus')['ElPagination']
+    ElSelect: typeof import('element-plus')['ElSelect']
+    ElTable: typeof import('element-plus')['ElTable']
+    ElTableColumn: typeof import('element-plus')['ElTableColumn']
+    RouterLink: typeof import('vue-router')['RouterLink']
+    RouterView: typeof import('vue-router')['RouterView']
+  }
+}

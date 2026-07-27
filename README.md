@@ -1,48 +1,137 @@
-# .
+# RiskTrace
 
-This template should help get you started developing with Vue 3 in Vite.
+RiskTrace 是一套基于 Vue 3 与 Cloudflare Pages 构建的采购到付款合规风险控制应用。
 
-## Recommended IDE Setup
+项目目标是将合同、订单、发票、验收材料和付款记录组织为统一采购事件，通过规则与智能分析发现跨环节风险，并提供证据追溯、人工复核和处置闭环能力。
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## 1. 技术栈
 
-## Recommended Browser Setup
+### 前端
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+- Vue 3
+- TypeScript
+- Vite
+- Vue Router
+- Pinia
+- Element Plus
+- Element Plus Icons（唯一通用图标库）
+- UnoCSS
+- 原生 Fetch 统一封装
 
-## Type Support for `.vue` Imports in TS
+### Cloudflare
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
+- Cloudflare Pages
+- Cloudflare Pages Functions
+- Cloudflare Workers Runtime
+- Cloudflare D1
+- Wrangler
+- D1 Migrations
 
-## Customize configuration
+## 2. 环境要求
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+- Node.js：以 `package.json` 中的 `engines` 字段为准；
+- 包管理器：pnpm；
+- Cloudflare 本地联调：Wrangler。
 
-## Project Setup
+## 3. 安装依赖
 
-```sh
+```bash
 pnpm install
 ```
 
-### Compile and Hot-Reload for Development
+## 4. 本地开发
 
-```sh
+启动纯前端开发环境：
+
+```bash
 pnpm dev
 ```
 
-### Type-Check, Compile and Minify for Production
+默认访问地址由 Vite 在终端中输出。
 
-```sh
+联调 Cloudflare Pages Functions 与本地 D1：
+
+```bash
+pnpm cf:dev
+```
+
+## 5. 构建与质量检查
+
+执行完整检查：
+
+```bash
+pnpm check
+```
+
+完整检查包含：
+
+- Vue 与前端 TypeScript 类型检查；
+- Pages Functions TypeScript 类型检查；
+- OXLint；
+- ESLint；
+- Prettier 格式检查；
+- Vite 构建。
+
+单独构建：
+
+```bash
 pnpm build
 ```
 
-### Lint with [ESLint](https://eslint.org/)
+## 6. Cloudflare 与 D1 常用命令
 
-```sh
-pnpm lint
+创建迁移：
+
+```bash
+pnpm db:migration:create <迁移名称>
 ```
+
+应用本地迁移：
+
+```bash
+pnpm db:migrate:local
+```
+
+应用远程迁移：
+
+```bash
+pnpm db:migrate:remote
+```
+
+部署到 Cloudflare Pages：
+
+```bash
+pnpm cf:deploy
+```
+
+## 7. 当前页面入口
+
+- `/dashboard`：风险驾驶舱示例；
+- `/foundation`：基础组件与统一视觉预览；
+- `/cases`：采购事件业务入口；
+- `/tasks`：处置任务业务入口；
+- `/rules`：规则中心业务入口。
+
+## 8. 开发前必读
+
+在新增业务功能前，请阅读：
+
+- `AGENTS.md`：AI 与人工开发必须遵守的工程契约；
+- `AI_FRONTEND_STANDARD.md`：前端开发速查；
+- `docs/FRONTEND_DESIGN_SYSTEM.md`：前端设计系统；
+- `docs/ICON_SYSTEM.md`：Element Plus Icons 使用、语义映射、尺寸、颜色与无障碍规范；
+- `docs/API_CONVENTIONS.md`：接口规范；
+- `docs/FILE_STRUCTURE.md`：目录职责
+
+## 9. 核心工程原则
+
+- 业务组件不得直接调用 `fetch`；
+- 接口统一通过 `src/api/request.ts` 和 `src/api/modules/`；
+- 优先复用 `src/components/common/` 中的基础组件；
+- 统一使用 `src/styles/tokens.css` 中的设计令牌；
+- 通用图标只使用 `@element-plus/icons-vue`，并统一通过 `src/icons/index.ts` 访问；
+- 禁止使用 Emoji、Unicode 符号、文字首字或 CSS 图形作为产品图标；
+- 纯图标按钮必须使用统一组件并提供 Tooltip 与 `aria-label`；
+- 演示数据必须放在 `src/mocks/`；
+- 数据页面必须提供加载、空数据和错误状态；
+- 不得引入第二套 UI 框架、状态库或 HTTP 客户端。
