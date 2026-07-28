@@ -37,6 +37,17 @@ export default defineConfigWithVueTs(
       'eqeqeq': ['error', 'always'],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'no-debugger': 'error',
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@element-plus/icons-vue',
+              message: '请统一从 @/icons 导入图标，禁止在业务文件中直接导入图标库。',
+            },
+          ],
+        },
+      ],
       'prefer-const': 'error',
       'vue/block-order': ['error', { order: ['script', 'template', 'style'] }],
       'vue/component-name-in-template-casing': ['error', 'PascalCase'],
@@ -61,6 +72,13 @@ export default defineConfigWithVueTs(
       'vue/no-mutating-props': 'error',
       'vue/no-unused-components': 'error',
       'vue/no-v-html': 'error',
+    },
+  },
+  {
+    name: 'risktrace/icon-entry-exception',
+    files: ['src/icons/index.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
     },
   },
   ...pluginOxlint.buildFromOxlintConfigFile('.oxlintrc.json'),

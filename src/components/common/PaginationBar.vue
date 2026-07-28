@@ -11,25 +11,29 @@ withDefaults(
     total: number
     pageSizes?: number[]
     disabled?: boolean
+    background?: boolean
+    hideOnSinglePage?: boolean
   }>(),
   {
     pageSizes: () => [10, 20, 50, 100],
     disabled: false,
+    background: true,
+    hideOnSinglePage: false,
   },
 )
 </script>
 
 <template>
   <div class="pagination-bar">
-    <span class="pagination-bar__summary">共 {{ total }} 条记录</span>
     <el-pagination
       :current-page="page"
       :page-size="pageSize"
       :page-sizes="pageSizes"
       :total="total"
       :disabled="disabled"
-      layout="sizes, prev, pager, next, jumper"
-      background
+      :background="background"
+      :hide-on-single-page="hideOnSinglePage"
+      layout="total, sizes, prev, pager, next, jumper"
       @update:current-page="emit('update:page', $event)"
       @update:page-size="emit('update:pageSize', $event)"
     />
@@ -39,22 +43,14 @@ withDefaults(
 <style scoped>
 .pagination-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--rt-space-4);
+  justify-content: flex-end;
   width: 100%;
-}
-
-.pagination-bar__summary {
-  color: var(--rt-text-tertiary);
-  font-size: var(--rt-font-size-xs);
+  overflow-x: auto;
 }
 
 @media (max-width: 760px) {
   .pagination-bar {
-    align-items: flex-start;
-    flex-direction: column;
-    overflow-x: auto;
+    justify-content: flex-start;
   }
 }
 </style>

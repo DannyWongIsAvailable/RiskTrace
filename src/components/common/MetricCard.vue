@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import type { StatusTone } from '@/types/ui'
 
-withDefaults(
+type TagType = 'primary' | 'success' | 'info' | 'warning' | 'danger'
+
+const props = withDefaults(
   defineProps<{
     label: string
     value: string | number
@@ -17,24 +21,39 @@ withDefaults(
     tone: 'neutral',
   },
 )
+
+const trendType = computed<TagType>(() => {
+  if (props.trendDirection === 'up') {
+    return 'danger'
+  }
+
+  if (props.trendDirection === 'down') {
+    return 'success'
+  }
+
+  return props.tone === 'neutral' ? 'info' : props.tone
+})
 </script>
 
 <template>
   <BaseCard class="metric-card" padding="md">
-    <div class="metric-card__topline">
+    <div class="metric-card__content">
       <span class="metric-card__label">{{ label }}</span>
-      <span class="metric-card__signal" :class="`metric-card__signal--${tone}`" aria-hidden="true" />
-    </div>
-    <div class="metric-card__value">{{ value }}</div>
-    <div class="metric-card__meta">
-      <span v-if="description" class="metric-card__description">{{ description }}</span>
-      <span
-        v-if="trend"
-        class="metric-card__trend"
-        :class="`metric-card__trend--${trendDirection}`"
-      >
-        {{ trend }}
-      </span>
+      <strong class="metric-card__value">{{ value }}</strong>
+
+      <div v-if="description || trend" class="metric-card__meta">
+        <span v-if="description" class="metric-card__description">{{ description }}</span>
+        <el-tag
+          v-if="trend"
+          :type="trendType"
+          effect="plain"
+          size="small"
+          round
+          disable-transitions
+        >
+          {{ trend }}
+        </el-tag>
+      </div>
     </div>
   </BaseCard>
 </template>
@@ -44,45 +63,21 @@ withDefaults(
   min-height: 168px;
 }
 
-.metric-card__topline {
+.metric-card__content {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--rt-space-3);
+  min-height: 126px;
+  flex-direction: column;
 }
 
 .metric-card__label {
-  color: var(--rt-text-secondary);
+  color: var(--el-text-color-regular);
   font-size: var(--rt-font-size-sm);
   font-weight: 700;
 }
 
-.metric-card__signal {
-  width: 28px;
-  height: 4px;
-  border-radius: var(--rt-radius-round);
-  background: var(--rt-color-info-500);
-}
-
-.metric-card__signal--primary {
-  background: var(--rt-color-primary-600);
-}
-
-.metric-card__signal--success {
-  background: var(--rt-color-success-600);
-}
-
-.metric-card__signal--warning {
-  background: var(--rt-color-warning-600);
-}
-
-.metric-card__signal--danger {
-  background: var(--rt-color-danger-600);
-}
-
 .metric-card__value {
   margin-top: var(--rt-space-4);
-  color: var(--rt-text-primary);
+  color: var(--el-text-color-primary);
   font-size: clamp(28px, 2.6vw, 38px);
   font-weight: 760;
   letter-spacing: -0.04em;
@@ -95,29 +90,14 @@ withDefaults(
   align-items: center;
   justify-content: space-between;
   gap: var(--rt-space-2);
-  margin-top: var(--rt-space-4);
-  color: var(--rt-text-tertiary);
-  font-size: var(--rt-font-size-xs);
+  margin-top: auto;
+  padding-top: var(--rt-space-4);
 }
 
 .metric-card__description {
+  min-width: 0;
   flex: 1 1 180px;
-}
-
-.metric-card__trend {
-  flex: 0 0 auto;
-  font-weight: 700;
-}
-
-.metric-card__trend--up {
-  color: var(--rt-color-danger-600);
-}
-
-.metric-card__trend--down {
-  color: var(--rt-color-success-600);
-}
-
-.metric-card__trend--flat {
-  color: var(--rt-color-info-600);
+  color: var(--el-text-color-secondary);
+  font-size: var(--rt-font-size-xs);
 }
 </style>

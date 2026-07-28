@@ -1,72 +1,112 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import type { StatusTone } from '@/types/ui'
 
-withDefaults(
+type AlertType = 'primary' | 'success' | 'warning' | 'info' | 'error'
+
+const emit = defineEmits<{
+  close: []
+}>()
+
+const props = withDefaults(
   defineProps<{
     title: string
     description?: string
     tone?: StatusTone
+    closable?: boolean
+    showIcon?: boolean
   }>(),
   {
     description: undefined,
     tone: 'neutral',
+    closable: false,
+    showIcon: true,
   },
 )
+
+const alertType = computed<AlertType>(() => {
+  if (props.tone === 'primary') {
+    return 'primary'
+  }
+
+  if (props.tone === 'success') {
+    return 'success'
+  }
+
+  if (props.tone === 'warning') {
+    return 'warning'
+  }
+
+  if (props.tone === 'danger') {
+    return 'error'
+  }
+
+  return 'info'
+})
 </script>
 
 <template>
-  <div class="inline-notice" :class="`inline-notice--${tone}`" role="status">
-    <span class="inline-notice__marker" aria-hidden="true" />
-    <div class="inline-notice__content">
-      <strong class="inline-notice__title">{{ title }}</strong>
-      <p v-if="description" class="inline-notice__description">{{ description }}</p>
-      <div v-if="$slots.default" class="inline-notice__body">
-        <slot />
+  <el-alert
+    class="inline-notice"
+    :class="`inline-notice--${tone}`"
+    :type="alertType"
+    :closable="closable"
+    :show-icon="showIcon"
+    :role="tone === 'danger' ? 'alert' : 'status'"
+    @close="emit('close')"
+  >
+    <template #title>
+      <span class="inline-notice__title">{{ title }}</span>
+    </template>
+
+    <div v-if="description || $slots.default || $slots.actions" class="inline-notice__content">
+      <div class="inline-notice__copy">
+        <p v-if="description" class="inline-notice__description">{{ description }}</p>
+        <div v-if="$slots.default" class="inline-notice__body">
+          <slot />
+        </div>
+      </div>
+
+      <div v-if="$slots.actions" class="inline-notice__actions">
+        <slot name="actions" />
       </div>
     </div>
-    <div v-if="$slots.actions" class="inline-notice__actions">
-      <slot name="actions" />
-    </div>
-  </div>
+  </el-alert>
 </template>
 
 <style scoped>
 .inline-notice {
-  display: flex;
+  --el-alert-padding: var(--rt-space-4);
   align-items: flex-start;
-  gap: var(--rt-space-3);
-  padding: var(--rt-space-4);
-  border: 1px solid var(--rt-border-default);
-  border-left-width: 4px;
-  border-radius: var(--rt-radius-md);
-  background: var(--rt-bg-subtle);
-  color: var(--rt-text-secondary);
 }
 
-.inline-notice__marker {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  margin-top: 6px;
-  border-radius: 50%;
-  background: currentColor;
+.inline-notice__title {
+  color: var(--el-text-color-primary);
+  font-weight: 700;
 }
 
 .inline-notice__content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--rt-space-4);
+  width: 100%;
+}
+
+.inline-notice__copy {
   min-width: 0;
   flex: 1 1 auto;
 }
 
-.inline-notice__title {
-  display: block;
-  color: var(--rt-text-primary);
+.inline-notice__description,
+.inline-notice__body {
+  color: inherit;
   font-size: var(--rt-font-size-sm);
 }
 
-.inline-notice__description,
 .inline-notice__body {
   margin-top: var(--rt-space-1);
-  font-size: var(--rt-font-size-sm);
 }
 
 .inline-notice__actions {
@@ -76,42 +116,13 @@ withDefaults(
   gap: var(--rt-space-2);
 }
 
-.inline-notice--primary {
-  border-color: var(--rt-color-primary-200);
-  border-left-color: var(--rt-color-primary-600);
-  background: var(--rt-color-primary-50);
-  color: var(--rt-color-primary-700);
-}
-
-.inline-notice--success {
-  border-color: var(--rt-color-success-200);
-  border-left-color: var(--rt-color-success-600);
-  background: var(--rt-color-success-50);
-  color: var(--rt-color-success-600);
-}
-
-.inline-notice--warning {
-  border-color: var(--rt-color-warning-200);
-  border-left-color: var(--rt-color-warning-600);
-  background: var(--rt-color-warning-50);
-  color: var(--rt-color-warning-600);
-}
-
-.inline-notice--danger {
-  border-color: var(--rt-color-danger-200);
-  border-left-color: var(--rt-color-danger-600);
-  background: var(--rt-color-danger-50);
-  color: var(--rt-color-danger-600);
-}
-
 @media (max-width: 640px) {
-  .inline-notice {
-    flex-wrap: wrap;
+  .inline-notice__content {
+    flex-direction: column;
   }
 
   .inline-notice__actions {
     width: 100%;
-    padding-left: calc(8px + var(--rt-space-3));
   }
 }
 </style>

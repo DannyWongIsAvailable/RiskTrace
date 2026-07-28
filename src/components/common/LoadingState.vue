@@ -3,20 +3,20 @@ withDefaults(
   defineProps<{
     title?: string
     rows?: number
+    animated?: boolean
   }>(),
   {
     title: '正在加载数据',
     rows: 4,
+    animated: true,
   },
 )
 </script>
 
 <template>
-  <div class="loading-state" role="status" aria-live="polite">
+  <div class="loading-state" role="status" aria-live="polite" aria-busy="true">
     <span class="loading-state__label">{{ title }}</span>
-    <div class="loading-state__rows" aria-hidden="true">
-      <span v-for="row in rows" :key="row" class="loading-state__row" />
-    </div>
+    <el-skeleton :rows="rows" :animated="animated" />
   </div>
 </template>
 
@@ -28,52 +28,7 @@ withDefaults(
 .loading-state__label {
   display: block;
   margin-bottom: var(--rt-space-4);
-  color: var(--rt-text-tertiary);
+  color: var(--el-text-color-secondary);
   font-size: var(--rt-font-size-sm);
-}
-
-.loading-state__rows {
-  display: flex;
-  flex-direction: column;
-  gap: var(--rt-space-3);
-}
-
-.loading-state__row {
-  display: block;
-  height: 14px;
-  overflow: hidden;
-  border-radius: var(--rt-radius-round);
-  background: linear-gradient(
-    90deg,
-    var(--rt-color-gray-100) 25%,
-    var(--rt-color-gray-50) 50%,
-    var(--rt-color-gray-100) 75%
-  );
-  background-size: 200% 100%;
-  animation: loading-state-shimmer 1.4s infinite linear;
-}
-
-.loading-state__row:nth-child(2n) {
-  width: 86%;
-}
-
-.loading-state__row:nth-child(3n) {
-  width: 72%;
-}
-
-@keyframes loading-state-shimmer {
-  from {
-    background-position: 200% 0;
-  }
-
-  to {
-    background-position: -200% 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loading-state__row {
-    animation: none;
-  }
 }
 </style>

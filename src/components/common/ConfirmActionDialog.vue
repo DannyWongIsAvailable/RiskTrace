@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import type { FormInstance, FormRules } from 'element-plus'
+import { reactive, ref } from 'vue'
 
 const model = defineModel<boolean>({ required: true })
 
@@ -32,32 +33,59 @@ const props = withDefaults(
   },
 )
 
-const reason = ref('')
-const validationMessage = ref('')
+interface ReasonFormModel {
+  reason: string
+}
 
-function closeDialog(): void {
+const formRef = ref<FormInstance>()
+const formModel = reactive<ReasonFormModel>({
+  reason: '',
+})
+
+const formRules: FormRules<typeof formModel> = {
+  reason: [
+    {
+      required: true,
+      message: '请填写处理说明',
+      trigger: ['blur', 'change'],
+    },
+  ],
+}
+
+function resetForm(): void {
+  formModel.reason = ''
+  formRef.value?.clearValidate()
+}
+
+function handleCancel(): void {
+  if (props.loading) {
+    return
+  }
+
   model.value = false
   emit('cancel')
 }
 
-function confirmAction(): void {
-  const normalizedReason = reason.value.trim()
-
-  if (props.requireReason && !normalizedReason) {
-    validationMessage.value = '请填写处理说明'
+function handleBeforeClose(done: () => void): void {
+  if (props.loading) {
     return
   }
 
-  validationMessage.value = ''
-  emit('confirm', normalizedReason)
+  emit('cancel')
+  done()
 }
 
-watch(model, (visible) => {
-  if (!visible) {
-    reason.value = ''
-    validationMessage.value = ''
+async function handleConfirm(): Promise<void> {
+  if (props.requireReason) {
+    try {
+      await formRef.value?.validate()
+    } catch {
+      return
+    }
   }
-})
+
+  emit('confirm', formModel.reason.trim())
+}
 </script>
 
 <template>
@@ -65,24 +93,32 @@ watch(model, (visible) => {
     v-model="model"
     :title="title"
     width="min(92vw, 520px)"
+    :before-close="handleBeforeClose"
     :close-on-click-modal="!loading"
     :close-on-press-escape="!loading"
     :show-close="!loading"
     destroy-on-close
+    @closed="resetForm"
   >
     <p v-if="description" class="confirm-action-dialog__description">{{ description }}</p>
 
-    <el-form v-if="requireReason" label-position="top" class="confirm-action-dialog__form">
-      <el-form-item :label="reasonLabel" :error="validationMessage" required>
+    <el-form
+      v-if="requireReason"
+      ref="formRef"
+      :model="formModel"
+      :rules="formRules"
+      label-position="top"
+      class="confirm-action-dialog__form"
+    >
+      <el-form-item :label="reasonLabel" prop="reason" required>
         <el-input
-          v-model="reason"
+          v-model="formModel.reason"
           type="textarea"
           :rows="4"
           :placeholder="reasonPlaceholder"
           maxlength="500"
           show-word-limit
           :disabled="loading"
-          @input="validationMessage = ''"
         />
       </el-form-item>
     </el-form>
@@ -91,8 +127,8 @@ watch(model, (visible) => {
 
     <template #footer>
       <div class="confirm-action-dialog__footer">
-        <el-button :disabled="loading" @click="closeDialog">{{ cancelText }}</el-button>
-        <el-button :type="confirmType" :loading="loading" @click="confirmAction">
+        <el-button :disabled="loading" @click="handleCancel">{{ cancelText }}</el-button>
+        <el-button :type="confirmType" :loading="loading" @click="handleConfirm">
           {{ confirmText }}
         </el-button>
       </div>
@@ -102,7 +138,7 @@ watch(model, (visible) => {
 
 <style scoped>
 .confirm-action-dialog__description {
-  color: var(--rt-text-secondary);
+  color: var(--el-text-color-regular);
   font-size: var(--rt-font-size-sm);
 }
 

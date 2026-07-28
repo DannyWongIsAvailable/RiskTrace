@@ -42,6 +42,7 @@
 - 加载状态 `LoadingState`；
 - 空数据状态 `EmptyState`；
 - 错误状态 `ErrorState`；
+- 统一图标按钮 `IconButton`；
 - 品牌标识 `AppLogo`。
 
 ### 2.4 示例页面与路由

@@ -122,12 +122,11 @@
   --rt-z-topbar: 40;
   --rt-z-overlay: 50;
 
-  :root {
-    --rt-icon-xs:14px;
-    --rt-icon-sm:16px;
-    --rt-icon-md:18px;
-    --rt-icon-lg:20px;
-    --rt-icon-xl:24px;
-    --rt-icon-state:40px;
-  }
+  /* Icon */
+  --rt-icon-size-xs: 14px;
+  --rt-icon-size-sm: 16px;
+  --rt-icon-size-md: 18px;
+  --rt-icon-size-lg: 20px;
+  --rt-icon-size-xl: 24px;
+  --rt-icon-size-state: 40px;
 }

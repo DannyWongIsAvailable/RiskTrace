@@ -1,19 +1,33 @@
 <script setup lang="ts">
+const emit = defineEmits<{
+  retry: []
+}>()
+
 withDefaults(
   defineProps<{
     title: string
     description?: string
     loading?: boolean
+    loadingRows?: number
     empty?: boolean
     emptyTitle?: string
     emptyDescription?: string
+    error?: boolean
+    errorTitle?: string
+    errorDescription?: string
+    retryLabel?: string
   }>(),
   {
     description: undefined,
     loading: false,
+    loadingRows: 5,
     empty: false,
     emptyTitle: '暂无数据',
     emptyDescription: '当前筛选条件下没有可展示的记录。',
+    error: false,
+    errorTitle: '数据加载失败',
+    errorDescription: '请检查网络连接后重试。若问题持续存在，请联系系统管理员。',
+    retryLabel: '重新加载',
   },
 )
 </script>
@@ -24,7 +38,15 @@ withDefaults(
       <slot name="actions" />
     </template>
 
-    <LoadingState v-if="loading" />
+    <LoadingState v-if="loading" :rows="loadingRows" />
+    <ErrorState
+      v-else-if="error"
+      compact
+      :title="errorTitle"
+      :description="errorDescription"
+      :retry-label="retryLabel"
+      @retry="emit('retry')"
+    />
     <EmptyState
       v-else-if="empty"
       :title="emptyTitle"

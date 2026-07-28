@@ -1,5 +1,3 @@
-// src/icons/index.ts
-
 import {
   Bell,
   CircleCheckFilled,
@@ -26,10 +24,7 @@ import {
   WarningFilled,
 } from '@element-plus/icons-vue'
 
-
 export const AppIcons = {
-
-  // 导航图标
   navigation: {
     dashboard: DataAnalysis,
     cases: DocumentChecked,
@@ -37,9 +32,6 @@ export const AppIcons = {
     rules: Setting,
     foundation: Grid,
   },
-
-
-  // 操作图标
   action: {
     search: Search,
     filter: Filter,
@@ -51,29 +43,19 @@ export const AppIcons = {
     delete: Delete,
     more: MoreFilled,
   },
-
-
-  // 布局
   layout: {
     menu: Menu,
     collapse: Fold,
     expand: Expand,
     close: Close,
   },
-
-
-  // 状态
   status: {
     success: CircleCheckFilled,
     warning: WarningFilled,
     loading: Loading,
   },
-
-
-  // 用户
   account: {
     user: User,
     notification: Bell,
   },
-
 } as const

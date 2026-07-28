@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+import { AppIcons } from '@/icons'
 import type { DescriptionItem } from '@/types/ui'
 
 const keyword = ref('')
@@ -195,6 +196,9 @@ function handleConfirmAction(reason: string): void {
           <el-button type="primary" plain>保存草稿</el-button>
           <el-button type="primary">提交审批</el-button>
           <el-button type="danger" plain>暂缓付款</el-button>
+          <IconButton :icon="AppIcons.action.refresh" label="刷新数据" />
+          <IconButton :icon="AppIcons.action.view" label="查看详情" />
+          <IconButton :icon="AppIcons.action.delete" label="删除记录" type="danger" plain />
         </div>
       </BaseCard>
     </section>
