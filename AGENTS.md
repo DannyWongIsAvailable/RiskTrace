@@ -108,7 +108,7 @@ import { AppIcons } from '@/icons'
 ### 5.2 禁止行为
 
 产品界面中的标题、按钮、菜单、空状态、提示、标签和告警中禁止使用 Emoji。
-禁止用 Unicode 符号、文字首字、CSS 图形或临时 SVG 代替正式图标。
+禁止用 Unicode 符号、文字首字、CSS 图形或临时内联 SVG 代替正式通用图标。
 
 禁止：
 
@@ -142,12 +142,13 @@ import { AppIcons } from '@/icons'
 1. 复用 `public/` 或 `src/assets/` 中已有资源；
 2. 复用已有组件；
 3. 在 `src/icons/index.ts` 中复用已批准的 Element Plus Icons 语义映射；
-4. 确认通用图标库无法表达后，新增语义明确、命名清晰并记录用途的正式静态资源。
+4. 确认通用图标库无法表达后，新增语义明确、命名清晰并记录用途的正式 SVG 或图片静态资源。
 
 缺少数据时使用 `EmptyState.vue`；
 正在加载时使用 `LoadingState.vue` 或中性骨架；
 请求失败时使用 `ErrorState.vue`；
 品牌标识统一复用 `/public/brand/risktrace-mark.svg`。
+正式 SVG 静态资源仅用于品牌、业务流程、证据链、关系拓扑、领域专属符号或报告插图；应存放在 `public/` 或 `src/assets/`，不得将 SVG 源码散落在业务模板中，也不得替代 `AppIcons` 已覆盖的通用界面图标。开发阶段允许使用文件名带 `-placeholder` 的明确占位资源，但必须标注待人工补充，并在正式发布前替换或移除。
 
 ## 6. 组件设计规则
 

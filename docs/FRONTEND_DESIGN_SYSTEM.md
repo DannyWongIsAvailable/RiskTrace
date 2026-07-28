@@ -237,7 +237,7 @@ src/styles/tokens.css
 - 引入第二套图标库；
 - 混用不同图标家族；
 - 使用 Emoji、Unicode 符号、文字首字或 CSS 方块代替图标；
-- 随机生成通用 SVG 图标。
+- 使用临时内联 SVG 或随机生成的 SVG 代替通用图标。
 
 ### 12.2 风格与语义
 
@@ -252,7 +252,7 @@ src/styles/tokens.css
 
 统一使用以下图标尺寸令牌：
 
-```css
+```
 --rt-icon-size-xs: 14px;
 --rt-icon-size-sm: 16px;
 --rt-icon-size-md: 18px;
@@ -288,6 +288,10 @@ src/styles/tokens.css
 - 危险操作语义。
 
 图标旁已有明确文字时，图标应设置为装饰性内容，避免屏幕阅读器重复朗读。
+
+### 12.6 SVG 静态资源
+
+品牌标志、业务流程、证据链、关系拓扑和正式报告插图可以使用 SVG 静态资源。此类资源必须放在 `public/` 或 `src/assets/`，使用语义化文件名，并提供适当的替代文本。开发阶段允许使用文件名带 `-placeholder` 的占位 SVG 标记待人工补充内容，但正式发布前必须替换或移除。通用导航、按钮、状态、折叠和账户图标仍必须使用 `AppIcons`，不得使用文字首字、CSS 图形或自制 SVG 替代。
 
 完整规范见 `docs/ICON_SYSTEM.md`。
 

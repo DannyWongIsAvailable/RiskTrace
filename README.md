@@ -130,7 +130,9 @@ pnpm cf:deploy
 - 优先复用 `src/components/common/` 中的基础组件；
 - 统一使用 `src/styles/tokens.css` 中的设计令牌；
 - 通用图标只使用 `@element-plus/icons-vue`，并统一通过 `src/icons/index.ts` 访问；
-- 禁止使用 Emoji、Unicode 符号、文字首字或 CSS 图形作为产品图标；
+- 禁止使用 Emoji、Unicode 符号、文字首字、CSS 图形或临时内联 SVG 作为通用产品图标；
+- 品牌、业务流程、证据链和领域专属图形可使用集中管理的正式 SVG 静态资源；
+- 开发阶段占位插图统一使用 `*-placeholder.svg` 命名，发布前必须替换或移除；
 - 纯图标按钮必须使用统一组件并提供 Tooltip 与 `aria-label`；
 - 演示数据必须放在 `src/mocks/`；
 - 数据页面必须提供加载、空数据和错误状态；

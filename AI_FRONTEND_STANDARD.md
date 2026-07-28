@@ -22,7 +22,7 @@ RiskTrace 是企业级采购合规与风险控制系统，界面应当：
 - `@element-plus/icons-vue` 提供的唯一通用图标；
 - `src/icons/index.ts` 提供的图标语义映射。
 
-禁止使用 Emoji、Unicode 符号、文字首字、CSS 图形或临时 SVG 代替正式图标；禁止引入第二套图标库、随机渐变、无关插画、装饰性图片和临时拼凑的占位卡片。
+禁止使用 Emoji、Unicode 符号、文字首字、CSS 图形或临时内联 SVG 代替正式通用图标；禁止引入第二套图标库、随机渐变、无关插画、装饰性图片和临时拼凑的占位卡片。品牌标志、业务专属图形和正式插图可使用经过评审的 SVG 静态资源，但必须集中存放在 `public/` 或 `src/assets/`，不得散落在业务模板中。
 
 
 ## 2. 图标速查
@@ -32,6 +32,9 @@ RiskTrace 是企业级采购合规与风险控制系统，界面应当：
 - 业务代码统一 `import { AppIcons } from '@/icons'`；
 - 禁止业务文件直接导入 `@element-plus/icons-vue`；
 - 禁止 Lucide、Heroicons、Material Icons、Font Awesome 和其他 Iconify 图标集；
+- 导航、按钮、状态和账户等通用语义不得使用文字首字、CSS 图形或自制 SVG；
+- 品牌、业务流程、证据链及领域专属图形可以使用正式 SVG 静态资源；
+- 开发阶段可使用明确标注的 `*-placeholder.svg`，但正式发布前必须替换或移除；
 - 纯图标按钮使用 `IconButton.vue`；
 - 纯图标按钮必须有 Tooltip 与 `aria-label`；
 - 图标默认继承 `currentColor`；
@@ -80,7 +83,7 @@ views
 4. 确认公开接口具有完整类型；
 5. 确认视觉使用现有设计令牌；
 6. 确认图标来自 `@/icons`，没有直接导入图标库；
-7. 确认没有用 Emoji、Unicode 符号、随机图标或假数据填充页面；
+7. 确认没有用 Emoji、Unicode 符号、文字首字、CSS 图形、临时内联 SVG 或假数据填充页面；
 8. 确认纯图标按钮具备 Tooltip 和 `aria-label`；
 9. 确认功能具备加载、空数据和错误处理。
 

@@ -2,20 +2,34 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
+import { AppIcons } from '@/icons'
+
 const emit = defineEmits<{
   openNavigation: []
 }>()
 
 const route = useRoute()
-const pageTitle = computed(() => String(route.meta.title ?? 'RiskTrace'))
+const pageTitle = computed(() => {
+  const title = route.meta['title']
+
+  return typeof title === 'string' && title.trim() ? title : 'RiskTrace'
+})
 const environment = import.meta.env.MODE === 'production' ? '生产环境' : '开发环境'
 </script>
 
 <template>
   <header class="app-topbar">
     <div class="app-topbar__leading">
-      <button class="app-topbar__menu-button" type="button" @click="emit('openNavigation')">
-        菜单
+      <button
+        class="app-topbar__menu-button"
+        type="button"
+        aria-label="打开导航菜单"
+        @click="emit('openNavigation')"
+      >
+        <el-icon class="app-topbar__menu-icon" aria-hidden="true">
+          <component :is="AppIcons.layout.menu" />
+        </el-icon>
+        <span>菜单</span>
       </button>
       <div class="app-topbar__page-context">
         <span class="app-topbar__page-title">{{ pageTitle }}</span>
@@ -29,7 +43,11 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
         <span>系统运行正常</span>
       </div>
       <button class="app-topbar__profile" type="button" aria-label="当前用户：系统管理员">
-        <span class="app-topbar__avatar">管</span>
+        <span class="app-topbar__avatar" aria-hidden="true">
+          <el-icon class="app-topbar__avatar-icon">
+            <component :is="AppIcons.account.user" />
+          </el-icon>
+        </span>
         <span class="app-topbar__profile-copy">
           <strong>系统管理员</strong>
           <span>合规中心</span>
@@ -71,6 +89,8 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
 .app-topbar__menu-button {
   display: none;
   min-height: 36px;
+  align-items: center;
+  gap: var(--rt-space-2);
   padding: 0 var(--rt-space-3);
   border: 1px solid var(--rt-border-default);
   border-radius: var(--rt-radius-md);
@@ -79,6 +99,12 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
   cursor: pointer;
   font-size: var(--rt-font-size-sm);
   font-weight: 700;
+}
+
+.app-topbar__menu-icon {
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: var(--rt-icon-size-md);
 }
 
 .app-topbar__page-context {
@@ -138,8 +164,11 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
   border-radius: 50%;
   background: var(--rt-color-primary-100);
   color: var(--rt-color-primary-800);
-  font-size: var(--rt-font-size-sm);
-  font-weight: 800;
+}
+
+.app-topbar__avatar-icon {
+  color: currentColor;
+  font-size: var(--rt-icon-size-lg);
 }
 
 .app-topbar__profile-copy {
@@ -163,7 +192,6 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
 
   .app-topbar__menu-button {
     display: inline-flex;
-    align-items: center;
   }
 
   .app-topbar__system-status,
@@ -172,5 +200,4 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
     display: none;
   }
 }
-
 </style>

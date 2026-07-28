@@ -130,3 +130,13 @@ pnpm check
 - 纯图标按钮统一使用 `IconButton.vue`；
 - 禁止 Emoji、Unicode 符号、文字首字、CSS 图形和临时 SVG 冒充正式图标；
 - 图标尺寸、颜色、语义和无障碍规则见 `docs/ICON_SYSTEM.md`。
+
+## 7. 导航图标一致性修复
+
+- 侧栏导航配置已直接绑定 `AppIcons.navigation` 中的语义图标；
+- 移除“风、处、规”等文字首字占位图标；
+- 移除侧栏收起按钮的 CSS 绘制箭头，改用统一布局图标；
+- 顶部移动端菜单入口增加标准菜单图标；
+- 顶部用户头像移除“管”字占位，改用统一账户图标；
+- 更新图标与前端规范，明确正式 SVG 静态资源的允许场景、目录、质量和无障碍要求；
+- 增加 `public/illustrations/business-illustration-placeholder.svg`，供开发阶段标记待人工补充的业务插图。

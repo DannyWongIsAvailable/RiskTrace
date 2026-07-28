@@ -9,7 +9,7 @@ coverage/
 # Environment files
 .env
 .env.*
-!.env.example
+!.env
 .dev.vars
 .dev.vars.*
 
@@ -43,3 +43,4 @@ Thumbs.db
 /cypress/videos/
 /cypress/screenshots/
 __screenshots__/
+/.env

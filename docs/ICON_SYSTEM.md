@@ -8,7 +8,7 @@ RiskTrace 的图标必须服务于信息识别、操作理解和状态表达，�
 
 - 保持企业级后台界面的视觉一致性；
 - 防止 AI 随意混用多个图标家族；
-- 防止使用 Emoji、Unicode 符号或临时 SVG 充当正式图标；
+- 防止使用 Emoji、Unicode 符号、文字首字、CSS 图形或临时内联 SVG 充当正式通用图标；
 - 统一图标的语义、尺寸、颜色、交互和无障碍行为；
 - 允许未来集中替换图标，而不需要逐页修改业务组件。
 
@@ -40,7 +40,7 @@ RiskTrace 通用界面图标只允许使用：
 - Emoji；
 - AI 临时生成的通用 SVG 图标。
 
-品牌标志、业务专属示意图和确有必要的领域图形不属于通用图标库，但必须作为正式静态资源管理，并经过设计评审。
+品牌标志、业务专属示意图和确有必要的领域图形不属于通用图标库，可以使用正式 SVG 静态资源，但必须集中管理、经过设计评审，并且不得替代 Element Plus Icons 已能准确表达的导航、操作、状态或账户图标。
 
 ## 3. 安装方式
 
@@ -210,7 +210,7 @@ import { AppIcons } from '@/icons'
 
 普通图标默认使用：
 
-```css
+```
 color: currentColor;
 ```
 
@@ -252,7 +252,7 @@ src/components/common/IconButton.vue
 
 推荐用法：
 
-```vue
+```
 <IconButton
   :icon="AppIcons.action.refresh"
   label="刷新数据"
@@ -283,7 +283,7 @@ src/components/common/IconButton.vue
 
 示例：
 
-```vue
+```
 <el-icon aria-hidden="true">
   <component :is="AppIcons.action.search" />
 </el-icon>
@@ -315,7 +315,7 @@ export interface NavigationItem {
 
 推荐渲染：
 
-```vue
+```
 <el-icon class="app-sidebar__link-icon" aria-hidden="true">
   <component :is="item.icon" />
 </el-icon>
@@ -325,7 +325,7 @@ export interface NavigationItem {
 
 ESLint 应限制业务代码直接导入图标库：
 
-```js
+```
 {
   files: ['src/**/*.{ts,vue}'],
   rules: {
@@ -354,22 +354,46 @@ ESLint 应限制业务代码直接导入图标库：
 
 ## 13. 静态资源与专属 SVG
 
-以下内容可以使用独立 SVG 或图片资源：
+### 13.1 允许使用的场景
+
+以下内容可以使用独立 SVG 或图片静态资源：
 
 - RiskTrace 品牌标志；
-- 业务流程图；
-- 证据链图形；
+- 业务流程图、证据链图形和关系拓扑；
 - 无法由通用图标准确表达的领域专属符号；
-- 报告和演示中的正式插图。
+- 报告、打印页面和演示中的正式插图；
+- 经产品确认的机构标识或固定身份头像；
+- 开发阶段用于标记待人工补充内容的明确占位插图。
 
-要求：
+导航、按钮、筛选、表格操作、状态、折叠、用户和通知等通用界面语义，仍必须优先使用 `AppIcons`，不得以文字首字、CSS 图形或自制 SVG 替代。
 
-- 文件放在 `public/` 或 `src/assets/`；
-- 使用语义化文件名；
-- 不把 SVG 代码散落到业务模板；
-- 不使用 AI 随机生成的占位图标；
+### 13.2 存放位置
+
+- 无需构建处理、通过固定 URL 使用的资源放在 `public/`；
+- 需要由 Vite 参与哈希、引用和构建处理的资源放在 `src/assets/`；
+- 品牌资源建议放在 `public/brand/`；
+- 业务插图建议放在 `public/illustrations/` 或 `src/assets/illustrations/`；
+- 不得把图片、品牌 SVG 或业务插图放入 `src/icons/`。
+
+### 13.3 SVG 质量要求
+
+- 使用语义化、短横线命名，例如 `risk-evidence-chain.svg`；
+- 设置正确的 `viewBox`，避免只依赖固定宽高；
+- 删除编辑器元数据、隐藏图层和无用节点；
+- 不嵌入脚本、外链资源、事件处理器或大体积 Base64；
+- 可主题化的单色资源优先使用 `currentColor`，品牌资源可保留批准的固定色；
+- 不把大段 SVG 源码散落到 Vue 业务模板；
+- 不使用 AI 随机生成的通用占位图标或无业务意义插图；
+- 占位插图必须使用 `*-placeholder.svg` 命名，在画面或说明中明确标注“待补充”，并在正式发布前替换或移除；
 - 不用远程 URL 作为核心界面资源；
-- 新增前确认 Element Plus Icons 中没有合适图标。
+- 新增前确认 Element Plus Icons 中没有合适的通用图标。
+
+### 13.4 无障碍要求
+
+- 纯装饰图片使用空 `alt`；
+- 承载信息的 SVG 图片必须提供准确、简短的替代文本；
+- 复杂流程图或证据链图必须在相邻区域提供等价文字说明；
+- 交互控件不得只依赖 SVG 图形表达操作含义。
 
 ## 14. AI 编程强制检查
 
@@ -381,7 +405,7 @@ AI 在生成或修改涉及图标的代码前，必须：
 4. 检查相邻页面使用的图标和尺寸；
 5. 说明新增图标的业务含义；
 6. 禁止自行安装其他图标库；
-7. 禁止使用 Emoji、Unicode 符号和临时 SVG；
+7. 禁止使用 Emoji、Unicode 符号、文字首字、CSS 图形和临时内联 SVG；
 8. 确认纯图标按钮具有无障碍名称和 Tooltip。
 
 ## 15. 提交前检查清单
@@ -390,11 +414,12 @@ AI 在生成或修改涉及图标的代码前，必须：
 - 业务文件统一从 `@/icons` 导入；
 - 没有引入第二套图标库；
 - 没有 Emoji 或 Unicode 图形符号；
-- 没有文字首字方块冒充图标；
+- 没有文字首字、CSS 图形或临时内联 SVG 冒充通用图标；
 - 图标尺寸使用统一令牌；
 - 图标颜色默认继承 `currentColor`；
 - 同一语义使用同一图标；
 - 纯图标按钮使用 `IconButton.vue`；
 - 纯图标按钮具备 Tooltip 和 `aria-label`；
 - 状态没有只依赖图标和颜色表达；
+- 正式 SVG 静态资源的用途、目录、命名和无障碍信息符合本规范；
 - ESLint 图标导入边界检查通过。

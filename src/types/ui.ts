@@ -1,3 +1,5 @@
+import type { Component } from 'vue'
+
 export type StatusTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger'
 
 export interface BreadcrumbItem {
@@ -9,6 +11,7 @@ export interface NavigationItem {
   key: string
   label: string
   to: string
+  icon: Component
   description?: string
   group?: string
   badge?: string

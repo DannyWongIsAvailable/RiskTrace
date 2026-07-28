@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { mainNavigation, supportNavigation } from '@/constants/navigation'
-import type { NavigationItem } from '@/types/ui'
+import { AppIcons } from '@/icons'
 
 const emit = defineEmits<{
   navigate: []
@@ -17,10 +17,6 @@ withDefaults(
     mobile: false,
   },
 )
-
-function compactLabel(item: NavigationItem): string {
-  return item.label.slice(0, 1)
-}
 </script>
 
 <template>
@@ -46,9 +42,9 @@ function compactLabel(item: NavigationItem): string {
           :title="collapsed && !mobile ? item.label : undefined"
           @click="emit('navigate')"
         >
-          <span class="app-sidebar__link-mark" aria-hidden="true">
-            {{ compactLabel(item) }}
-          </span>
+          <el-icon class="app-sidebar__link-icon" aria-hidden="true">
+            <component :is="item.icon" />
+          </el-icon>
           <span v-if="!collapsed || mobile" class="app-sidebar__link-copy">
             <span class="app-sidebar__link-label">{{ item.label }}</span>
             <span v-if="item.description" class="app-sidebar__link-description">
@@ -71,9 +67,9 @@ function compactLabel(item: NavigationItem): string {
           :title="collapsed && !mobile ? item.label : undefined"
           @click="emit('navigate')"
         >
-          <span class="app-sidebar__link-mark" aria-hidden="true">
-            {{ compactLabel(item) }}
-          </span>
+          <el-icon class="app-sidebar__link-icon" aria-hidden="true">
+            <component :is="item.icon" />
+          </el-icon>
           <span v-if="!collapsed || mobile" class="app-sidebar__link-copy">
             <span class="app-sidebar__link-label">{{ item.label }}</span>
             <span v-if="item.description" class="app-sidebar__link-description">
@@ -85,8 +81,15 @@ function compactLabel(item: NavigationItem): string {
     </nav>
 
     <div v-if="!mobile" class="app-sidebar__footer">
-      <button class="app-sidebar__collapse-button" type="button" @click="emit('toggle')">
-        <span class="app-sidebar__collapse-indicator" aria-hidden="true" />
+      <button
+        class="app-sidebar__collapse-button"
+        type="button"
+        :title="collapsed ? '展开导航' : '收起导航'"
+        @click="emit('toggle')"
+      >
+        <el-icon class="app-sidebar__collapse-icon" aria-hidden="true">
+          <component :is="collapsed ? AppIcons.layout.expand : AppIcons.layout.collapse" />
+        </el-icon>
         <span v-if="!collapsed">收起导航</span>
         <span v-else class="rt-sr-only">展开导航</span>
       </button>
@@ -173,23 +176,23 @@ function compactLabel(item: NavigationItem): string {
   color: var(--rt-text-primary);
 }
 
-.app-sidebar__link.router-link-active {
-  background: var(--rt-bg-selected);
-  color: var(--rt-color-primary-800);
-}
+//.app-sidebar__link.router-link-active {
+//  background: var(--rt-bg-selected);
+//  color: var(--rt-color-primary-800);
+//}
+//
+//.app-sidebar__link.router-link-active::before {
+//  position: absolute;
+//  top: 12px;
+//  bottom: 12px;
+//  left: 0;
+//  width: 3px;
+//  border-radius: var(--rt-radius-round);
+//  background: var(--rt-color-primary-600);
+//  content: '';
+//}
 
-.app-sidebar__link.router-link-active::before {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 0;
-  width: 3px;
-  border-radius: var(--rt-radius-round);
-  background: var(--rt-color-primary-600);
-  content: '';
-}
-
-.app-sidebar__link-mark {
+.app-sidebar__link-icon {
   display: grid;
   width: 30px;
   height: 30px;
@@ -199,11 +202,10 @@ function compactLabel(item: NavigationItem): string {
   border-radius: var(--rt-radius-sm);
   background: var(--rt-bg-panel);
   color: var(--rt-text-secondary);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: var(--rt-icon-size-md);
 }
 
-.router-link-active .app-sidebar__link-mark {
+.router-link-active .app-sidebar__link-icon {
   border-color: var(--rt-color-primary-200);
   background: var(--rt-color-primary-50);
   color: var(--rt-color-primary-700);
@@ -270,15 +272,9 @@ function compactLabel(item: NavigationItem): string {
   color: var(--rt-text-primary);
 }
 
-.app-sidebar__collapse-indicator {
-  width: 12px;
-  height: 12px;
-  border-bottom: 2px solid currentColor;
-  border-left: 2px solid currentColor;
-  transform: rotate(45deg);
-}
-
-.app-sidebar--collapsed .app-sidebar__collapse-indicator {
-  transform: rotate(225deg);
+.app-sidebar__collapse-icon {
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: var(--rt-icon-size-sm);
 }
 </style>

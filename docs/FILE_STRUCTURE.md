@@ -17,7 +17,8 @@ RiskTrace/
 │   ├── _shared/
 │   └── api/
 ├── public/
-│   └── brand/
+│   ├── brand/
+│   └── illustrations/
 ├── src/
 │   ├── api/
 │   │   └── modules/
@@ -197,6 +198,15 @@ src/icons/index.ts
 - 禁止在此目录存放图片、品牌 SVG 或业务插图。
 
 完整规则见 `docs/ICON_SYSTEM.md`。
+
+### 静态 SVG 与图片资源
+
+- 固定 URL 访问的品牌和正式插图放在 `public/brand/`、`public/illustrations/` 等语义目录；
+- 需要 Vite 构建处理的静态资源放在 `src/assets/`；
+- SVG 文件使用短横线语义命名，并清理脚本、外链、编辑器元数据和无用节点；
+- 开发阶段待人工补充的插图使用 `*-placeholder.svg` 命名，正式发布前必须替换或移除；
+- 不在 Vue 业务模板中散落大段 SVG 源码；
+- 不使用静态 SVG 替代 `AppIcons` 已覆盖的通用导航、操作、状态和账户图标。
 
 ## 13. `src/mocks/`
 
