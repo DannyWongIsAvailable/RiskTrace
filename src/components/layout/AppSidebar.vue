@@ -38,6 +38,7 @@ withDefaults(
           v-for="item in mainNavigation"
           :key="item.key"
           class="app-sidebar__link"
+          active-class="app-sidebar__link--active"
           :to="item.to"
           :title="collapsed && !mobile ? item.label : undefined"
           @click="emit('navigate')"
@@ -63,6 +64,7 @@ withDefaults(
           v-for="item in supportNavigation"
           :key="item.key"
           class="app-sidebar__link"
+          active-class="app-sidebar__link--active"
           :to="item.to"
           :title="collapsed && !mobile ? item.label : undefined"
           @click="emit('navigate')"
@@ -176,21 +178,23 @@ withDefaults(
   color: var(--rt-text-primary);
 }
 
-//.app-sidebar__link.router-link-active {
-//  background: var(--rt-bg-selected);
-//  color: var(--rt-color-primary-800);
-//}
-//
-//.app-sidebar__link.router-link-active::before {
-//  position: absolute;
-//  top: 12px;
-//  bottom: 12px;
-//  left: 0;
-//  width: 3px;
-//  border-radius: var(--rt-radius-round);
-//  background: var(--rt-color-primary-600);
-//  content: '';
-//}
+/*noinspection CssUnusedSymbol*/
+.app-sidebar__link--active {
+  background: var(--rt-bg-selected);
+  color: var(--rt-color-primary-800);
+}
+
+/*noinspection CssUnusedSymbol*/
+.app-sidebar__link--active::before {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 3px;
+  border-radius: var(--rt-radius-round);
+  background: var(--rt-color-primary-600);
+  content: '';
+}
 
 .app-sidebar__link-icon {
   display: grid;
@@ -205,7 +209,7 @@ withDefaults(
   font-size: var(--rt-icon-size-md);
 }
 
-.router-link-active .app-sidebar__link-icon {
+.app-sidebar__link--active .app-sidebar__link-icon {
   border-color: var(--rt-color-primary-200);
   background: var(--rt-color-primary-50);
   color: var(--rt-color-primary-700);

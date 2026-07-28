@@ -15,7 +15,6 @@ export interface NavigationItem {
   description?: string
   group?: string
   badge?: string
-  exact?: boolean
 }
 
 export interface SelectOption<T extends string | number = string> {

@@ -8,7 +8,6 @@ export const mainNavigation: NavigationItem[] = [
     to: '/dashboard',
     icon: AppIcons.navigation.dashboard,
     description: '关键指标与风险态势',
-    exact: true,
   },
   {
     key: 'cases',

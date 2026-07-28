@@ -4,6 +4,8 @@ RiskTrace 是一套基于 Vue 3 与 Cloudflare Pages 构建的采购到付款合
 
 项目目标是将合同、订单、发票、验收材料和付款记录组织为统一采购事件，通过规则与智能分析发现跨环节风险，并提供证据追溯、人工复核和处置闭环能力。
 
+> 线上地址：https://risktrace.pages.dev/  
+
 ## 1. 技术栈
 
 ### 前端
@@ -14,7 +16,7 @@ RiskTrace 是一套基于 Vue 3 与 Cloudflare Pages 构建的采购到付款合
 - Vue Router
 - Pinia
 - Element Plus
-- Element Plus Icons（唯一通用图标库）
+- Element Plus Icons
 - UnoCSS
 - 原生 Fetch 统一封装
 
