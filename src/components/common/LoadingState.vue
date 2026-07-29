@@ -14,7 +14,7 @@ withDefaults(
 </script>
 
 <template>
-  <div class="loading-state" role="status" aria-live="polite" aria-busy="true">
+  <div class="loading-state">
     <span class="loading-state__label">{{ title }}</span>
     <el-skeleton :rows="rows" :animated="animated" />
   </div>

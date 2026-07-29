@@ -10,11 +10,16 @@ interface ResponseOptions {
   headers?: HeadersInit
 }
 
-function createHeaders(headers?: HeadersInit): Headers {
+function createHeaders(headers?: HeadersInit, requestId?: string): Headers {
   const result = new Headers(headers)
   result.set('Cache-Control', 'no-store')
   result.set('Content-Type', 'application/json; charset=utf-8')
   result.set('X-Content-Type-Options', 'nosniff')
+
+  if (requestId) {
+    result.set('X-Request-Id', requestId)
+  }
+
   return result
 }
 
@@ -35,7 +40,7 @@ export function success<T>(data: T, options: ResponseOptions = {}): Response {
     }),
     {
       status: options.status ?? 200,
-      headers: createHeaders(options.headers),
+      headers: createHeaders(options.headers, options.requestId),
     },
   )
 }
@@ -55,7 +60,7 @@ export function failure(
     }),
     {
       status: options.status ?? 400,
-      headers: createHeaders(options.headers),
+      headers: createHeaders(options.headers, options.requestId),
     },
   )
 }

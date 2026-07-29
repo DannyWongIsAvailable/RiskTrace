@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 import { AppIcons } from '@/icons'
 import type { DescriptionItem } from '@/types/ui'
+import { showPendingIntegration } from '@/utils/interaction'
 
 const keyword = ref('')
 const riskLevel = ref('')
@@ -85,8 +86,8 @@ function handleConfirmAction(reason: string): void {
           <el-option label="中风险" value="medium" />
         </el-select>
         <template #actions>
-          <el-button>重置</el-button>
-          <el-button type="primary">查询</el-button>
+          <el-button @click="showPendingIntegration">重置</el-button>
+          <el-button type="primary" @click="showPendingIntegration">查询</el-button>
         </template>
       </FilterBar>
     </section>
@@ -192,13 +193,13 @@ function handleConfirmAction(reason: string): void {
           <el-date-picker type="daterange" start-placeholder="开始日期" end-placeholder="结束日期" />
         </div>
         <div class="foundation__button-row">
-          <el-button>取消</el-button>
-          <el-button type="primary" plain>保存草稿</el-button>
-          <el-button type="primary">提交审批</el-button>
-          <el-button type="danger" plain>暂缓付款</el-button>
-          <IconButton :icon="AppIcons.action.refresh" label="刷新数据" />
-          <IconButton :icon="AppIcons.action.view" label="查看详情" />
-          <IconButton :icon="AppIcons.action.delete" label="删除记录" type="danger" plain />
+          <el-button @click="showPendingIntegration">取消</el-button>
+          <el-button type="primary" plain @click="showPendingIntegration">保存草稿</el-button>
+          <el-button type="primary" @click="showPendingIntegration">提交审批</el-button>
+          <el-button type="danger" plain @click="showPendingIntegration">暂缓付款</el-button>
+          <el-button :icon="AppIcons.action.refresh" @click="showPendingIntegration">刷新数据</el-button>
+          <el-button :icon="AppIcons.action.view" @click="showPendingIntegration">查看详情</el-button>
+          <el-button :icon="AppIcons.action.delete" type="danger" plain @click="showPendingIntegration">删除记录</el-button>
         </div>
       </BaseCard>
     </section>

@@ -3,8 +3,54 @@ import { storeToRefs } from 'pinia'
 
 import { useAppStore } from '@/stores/app'
 
+const TRANSITION_DURATION_MS = 200
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
+
 const appStore = useAppStore()
 const { sidebarCollapsed, mobileNavigationOpen } = storeToRefs(appStore)
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches
+}
+
+function runTransition(element: Element, keyframes: Keyframe[], done: () => void): void {
+  if (!(element instanceof HTMLElement) || prefersReducedMotion()) {
+    done()
+    return
+  }
+
+  const animation = element.animate(keyframes, {
+    duration: TRANSITION_DURATION_MS,
+    easing: 'ease',
+    fill: 'both',
+  })
+
+  let completed = false
+  const complete = (): void => {
+    if (completed) return
+    completed = true
+    done()
+  }
+
+  animation.addEventListener('finish', complete, { once: true })
+  animation.addEventListener('cancel', complete, { once: true })
+}
+
+function enterOverlay(element: Element, done: () => void): void {
+  runTransition(element, [{ opacity: 0 }, { opacity: 1 }], done)
+}
+
+function leaveOverlay(element: Element, done: () => void): void {
+  runTransition(element, [{ opacity: 1 }, { opacity: 0 }], done)
+}
+
+function enterMobileSidebar(element: Element, done: () => void): void {
+  runTransition(element, [{ transform: 'translateX(-100%)' }, { transform: 'translateX(0)' }], done)
+}
+
+function leaveMobileSidebar(element: Element, done: () => void): void {
+  runTransition(element, [{ transform: 'translateX(0)' }, { transform: 'translateX(-100%)' }], done)
+}
 </script>
 
 <template>
@@ -20,17 +66,17 @@ const { sidebarCollapsed, mobileNavigationOpen } = storeToRefs(appStore)
       </main>
     </div>
 
-    <Transition name="app-layout-fade">
+    <Transition :css="false" @enter="enterOverlay" @leave="leaveOverlay">
       <button
         v-if="mobileNavigationOpen"
         class="app-layout__overlay"
         type="button"
-        aria-label="关闭导航"
+        aria-label="关闭移动导航"
         @click="appStore.closeMobileNavigation"
       />
     </Transition>
 
-    <Transition name="app-layout-slide">
+    <Transition :css="false" @enter="enterMobileSidebar" @leave="leaveMobileSidebar">
       <div v-if="mobileNavigationOpen" class="app-layout__mobile-sidebar">
         <AppSidebar mobile @navigate="appStore.closeMobileNavigation" />
       </div>
@@ -100,33 +146,6 @@ const { sidebarCollapsed, mobileNavigationOpen } = storeToRefs(appStore)
     left: 0;
     display: block;
     box-shadow: var(--rt-shadow-lg);
-  }
-
-  .app-layout-fade-enter-active,
-  .app-layout-fade-leave-active,
-  .app-layout-slide-enter-active,
-  .app-layout-slide-leave-active {
-    transition: all var(--rt-duration-base) var(--rt-ease-standard);
-  }
-
-  .app-layout-fade-enter-from,
-  .app-layout-fade-leave-to {
-    opacity: 0;
-  }
-
-  .app-layout-slide-enter-from,
-  .app-layout-slide-leave-to {
-    transform: translateX(-100%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-layout,
-  .app-layout-fade-enter-active,
-  .app-layout-fade-leave-active,
-  .app-layout-slide-enter-active,
-  .app-layout-slide-leave-active {
-    transition: none;
   }
 }
 </style>

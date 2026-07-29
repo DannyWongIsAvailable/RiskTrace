@@ -6,14 +6,14 @@
 RiskTrace/
 ├── AGENTS.md
 ├── AI_FRONTEND_STANDARD.md
-├── CONTRIBUTING.md
 ├── README.md
 ├── docs/
 │   ├── API_CONVENTIONS.md
-│   ├── FILE_STRUCTURE.md
+│   ├── ERROR_HANDLING_AND_OBSERVABILITY.md
 │   ├── FRONTEND_DESIGN_SYSTEM.md
 │   └── ICON_SYSTEM.md
 ├── functions/
+│   ├── _middleware.ts
 │   ├── _shared/
 │   └── api/
 ├── public/
@@ -31,6 +31,7 @@ RiskTrace/
 │   ├── icons/
 │   ├── layouts/
 │   ├── mocks/
+│   ├── observability/
 │   ├── router/
 │   ├── stores/
 │   ├── styles/
@@ -169,15 +170,16 @@ Vue 组件和 Pinia Store 不得直接调用 `fetch`。
 
 ## 11. `src/constants/`
 
-用于稳定的静态配置：
+用于稳定的静态配置和由单一配置源派生的读取工具：
 
-- 导航项；
 - 状态显示映射；
 - 下拉选项；
-- 不依赖运行时变化的业务常量。
+- 不依赖运行时变化的业务常量；
+- 从路由 `meta.navigation` 派生导航项的读取函数。
+
+导航标题、路径、图标、分组和排序统一维护在 `src/router/index.ts` 的路由 `meta` 中，不得在常量文件中复制第二份导航配置。
 
 不要把接口返回数据或临时变量写入常量目录。
-
 
 ## 12. `src/icons/`
 
@@ -189,8 +191,8 @@ src/icons/index.ts
 
 要求：
 
-- 通用图标只允许来自 `@element-plus/icons-vue`；
-- 除 `src/icons/index.ts` 外，其他文件禁止直接导入图标库；
+- 通用图标来自 `@element-plus/icons-vue`；
+- 除 `src/icons/index.ts` 外，必要时允许批准的 Iconify 图标
 - 统一导出 `AppIcons`；
 - 按 `navigation`、`action`、`layout`、`status`、`account` 等语义分组；
 - 同一业务语义只能对应一个默认图标；
@@ -208,7 +210,20 @@ src/icons/index.ts
 - 不在 Vue 业务模板中散落大段 SVG 源码；
 - 不使用静态 SVG 替代 `AppIcons` 已覆盖的通用导航、操作、状态和账户图标。
 
-## 13. `src/mocks/`
+## 13. `src/observability/`
+
+用于浏览器端统一错误归一化、结构化日志、错误订阅和外部观测传输。
+
+要求：
+
+- Vue、Router、全局脚本、Promise 和 API 异常统一进入该模块；
+- 不记录请求体、密钥、账户或其他敏感数据；
+- 业务页面仍负责自己的可恢复错误展示；
+- 不在业务组件中重复实现全局错误上报。
+
+完整规则见 `docs/ERROR_HANDLING_AND_OBSERVABILITY.md`。
+
+## 14. `src/mocks/`
 
 仅用于明确的演示和开发模拟数据。
 
@@ -220,7 +235,7 @@ src/icons/index.ts
 - 不得包含真实敏感数据；
 - 接入真实接口后应明确保留、替换或删除策略。
 
-## 14. `src/styles/`
+## 15. `src/styles/`
 
 ```text
 tokens.css     设计令牌
@@ -231,11 +246,12 @@ utilities.css  少量跨页面工具类
 
 页面专属样式应优先放在组件 Scoped CSS 中，不应不断扩大全局样式。
 
-## 15. `functions/`
+## 16. `functions/`
 
 ```text
-functions/api/       Pages Functions 文件系统路由
-functions/_shared/   后端共享响应、校验、数据库和审计工具
+functions/_middleware.ts  全局请求编号、耗时日志和未处理异常兜底
+functions/api/             Pages Functions 文件系统路由
+functions/_shared/         后端共享响应、校验、数据库和审计工具
 ```
 
 要求：
@@ -246,7 +262,7 @@ functions/_shared/   后端共享响应、校验、数据库和审计工具
 - 接口路径与文件结构保持可预测；
 - D1 结构变化通过迁移管理。
 
-## 16. 新增目录规则
+## 17. 新增目录规则
 
 禁止未经讨论新增顶层源码目录。
 

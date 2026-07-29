@@ -1,11 +1,10 @@
 /// <reference types="vite/client" />
 
-import 'vue-router'
-
-declare module 'vue-router' {
-  interface RouteMeta {
-    title?: string
-  }
+interface ImportMetaEnv {
+  readonly VITE_API_BASE_URL?: string
+  readonly VITE_OBSERVABILITY_ENDPOINT?: string
 }
 
-export {}
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}

@@ -35,7 +35,7 @@ const tagType = computed<TagType>(() => (props.tone === 'neutral' ? 'info' : pro
     :round="round"
     disable-transitions
   >
-    <span v-if="dot" class="status-tag__dot" aria-hidden="true" />
+    <span v-if="dot" class="status-tag__dot" />
     <span>{{ label }}</span>
   </el-tag>
 </template>

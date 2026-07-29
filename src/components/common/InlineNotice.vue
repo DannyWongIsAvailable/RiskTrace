@@ -53,7 +53,6 @@ const alertType = computed<AlertType>(() => {
     :type="alertType"
     :closable="closable"
     :show-icon="showIcon"
-    :role="tone === 'danger' ? 'alert' : 'status'"
     @close="emit('close')"
   >
     <template #title>

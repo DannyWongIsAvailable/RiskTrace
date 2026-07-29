@@ -121,8 +121,9 @@ pnpm cf:deploy
 - `AGENTS.md`：AI 与人工开发必须遵守的工程契约；
 - `AI_FRONTEND_STANDARD.md`：前端开发速查；
 - `docs/FRONTEND_DESIGN_SYSTEM.md`：前端设计系统；
-- `docs/ICON_SYSTEM.md`：Element Plus Icons 使用、语义映射、尺寸、颜色与无障碍规范；
+- `docs/ICON_SYSTEM.md`：Element Plus Icons 使用、语义映射、尺寸与颜色规范；
 - `docs/API_CONVENTIONS.md`：接口规范；
+- `docs/ERROR_HANDLING_AND_OBSERVABILITY.md`：全局错误处理、请求编号与观测规范；
 - `docs/FILE_STRUCTURE.md`：目录职责
 
 ## 9. 核心工程原则
@@ -132,10 +133,13 @@ pnpm cf:deploy
 - 优先复用 `src/components/common/` 中的基础组件；
 - 统一使用 `src/styles/tokens.css` 中的设计令牌；
 - 通用图标只使用 `@element-plus/icons-vue`，并统一通过 `src/icons/index.ts` 访问；
+- 导航标题、路径、图标、分组和排序统一维护在路由 `meta.navigation`；
 - 禁止使用 Emoji、Unicode 符号、文字首字、CSS 图形或临时内联 SVG 作为通用产品图标；
 - 品牌、业务流程、证据链和领域专属图形可使用集中管理的正式 SVG 静态资源；
 - 开发阶段占位插图统一使用 `*-placeholder.svg` 命名，发布前必须替换或移除；
-- 纯图标按钮必须使用统一组件并提供 Tooltip 与 `aria-label`；
+- 纯图标按钮必须使用统一组件；
 - 演示数据必须放在 `src/mocks/`；
 - 数据页面必须提供加载、空数据和错误状态；
+- 未接入行为的按钮保持可点击，点击后统一显示“待接入”气泡提示；
+- 浏览器异常、路由异常、未处理 Promise 和 API 异常统一进入观测模块；
 - 不得引入第二套 UI 框架、状态库或 HTTP 客户端。

@@ -81,6 +81,13 @@ export default defineConfigWithVueTs(
       'no-restricted-imports': 'off',
     },
   },
+  {
+    name: 'risktrace/observability-console-exception',
+    files: ['src/observability/**/*.ts', 'functions/_middleware.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
   ...pluginOxlint.buildFromOxlintConfigFile('.oxlintrc.json'),
   skipFormatting,
 )

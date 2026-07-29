@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { mainNavigation, supportNavigation } from '@/constants/navigation'
+import { useRouter } from 'vue-router'
+
+import { getNavigationItems } from '@/constants/navigation'
 import { AppIcons } from '@/icons'
 
 const emit = defineEmits<{
@@ -17,6 +19,10 @@ withDefaults(
     mobile: false,
   },
 )
+
+const router = useRouter()
+const mainNavigation = getNavigationItems(router, 'main')
+const supportNavigation = getNavigationItems(router, 'support')
 </script>
 
 <template>
@@ -31,7 +37,7 @@ withDefaults(
       <AppLogo :compact="collapsed && !mobile" />
     </div>
 
-    <nav class="app-sidebar__navigation" aria-label="主导航">
+    <nav class="app-sidebar__navigation">
       <div class="app-sidebar__group">
         <span v-if="!collapsed || mobile" class="app-sidebar__group-label">工作台</span>
         <RouterLink
@@ -40,10 +46,9 @@ withDefaults(
           class="app-sidebar__link"
           active-class="app-sidebar__link--active"
           :to="item.to"
-          :title="collapsed && !mobile ? item.label : undefined"
           @click="emit('navigate')"
         >
-          <el-icon class="app-sidebar__link-icon" aria-hidden="true">
+          <el-icon class="app-sidebar__link-icon">
             <component :is="item.icon" />
           </el-icon>
           <span v-if="!collapsed || mobile" class="app-sidebar__link-copy">
@@ -66,10 +71,9 @@ withDefaults(
           class="app-sidebar__link"
           active-class="app-sidebar__link--active"
           :to="item.to"
-          :title="collapsed && !mobile ? item.label : undefined"
           @click="emit('navigate')"
         >
-          <el-icon class="app-sidebar__link-icon" aria-hidden="true">
+          <el-icon class="app-sidebar__link-icon">
             <component :is="item.icon" />
           </el-icon>
           <span v-if="!collapsed || mobile" class="app-sidebar__link-copy">
@@ -83,17 +87,11 @@ withDefaults(
     </nav>
 
     <div v-if="!mobile" class="app-sidebar__footer">
-      <button
-        class="app-sidebar__collapse-button"
-        type="button"
-        :title="collapsed ? '展开导航' : '收起导航'"
-        @click="emit('toggle')"
-      >
-        <el-icon class="app-sidebar__collapse-icon" aria-hidden="true">
+      <button class="app-sidebar__collapse-button" type="button" @click="emit('toggle')">
+        <el-icon class="app-sidebar__collapse-icon">
           <component :is="collapsed ? AppIcons.layout.expand : AppIcons.layout.collapse" />
         </el-icon>
         <span v-if="!collapsed">收起导航</span>
-        <span v-else class="rt-sr-only">展开导航</span>
       </button>
     </div>
   </aside>

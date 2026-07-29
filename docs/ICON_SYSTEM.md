@@ -9,12 +9,12 @@ RiskTrace 的图标必须服务于信息识别、操作理解和状态表达，�
 - 保持企业级后台界面的视觉一致性；
 - 防止 AI 随意混用多个图标家族；
 - 防止使用 Emoji、Unicode 符号、文字首字、CSS 图形或临时内联 SVG 充当正式通用图标；
-- 统一图标的语义、尺寸、颜色、交互和无障碍行为；
+- 统一图标的语义、尺寸、颜色和交互行为；
 - 允许未来集中替换图标，而不需要逐页修改业务组件。
 
-## 2. 唯一批准的通用图标库
+## 2. 通用图标库
 
-RiskTrace 通用界面图标只允许使用：
+RiskTrace 通用界面图标使用：
 
 ```text
 @element-plus/icons-vue
@@ -27,6 +27,8 @@ RiskTrace 通用界面图标只允许使用：
 - 不需要引入第二套视觉语言；
 - 支持按需导入，便于控制打包体积；
 - 适合 Vue 3 与 TypeScript。
+
+通用界面操作图标应优先使用 Element Plus Icons。仅当 Element Plus Icons 无法准确表达业务语义时，允许使用项目批准的 Iconify 图标集。Iconify 图标应通过统一图标组件或图标注册表使用，禁止在业务代码中任意引入不同风格的图标集。
 
 禁止新增或混用：
 
@@ -244,23 +246,20 @@ src/components/common/IconButton.vue
 
 - 图标尺寸；
 - 按钮尺寸；
-- Tooltip；
-- `aria-label`；
 - 禁用状态；
 - 危险操作语义；
-- 键盘焦点和点击行为。
+- 点击事件出口。
 
 推荐用法：
 
 ```
 <IconButton
   :icon="AppIcons.action.refresh"
-  label="刷新数据"
   @click="handleRefresh"
 />
 ```
 
-禁止在业务页面中重复手写无标签的圆形图标按钮。
+禁止在业务页面中重复手写圆形图标按钮。
 
 图标旁边已有明确文字时，可以直接结合 Element Plus 按钮使用：
 
@@ -270,31 +269,16 @@ src/components/common/IconButton.vue
 </el-button>
 ```
 
-## 10. 无障碍要求
+## 10. 图标交互约束
 
-纯图标按钮必须同时提供：
-
-- 可理解的 `aria-label`；
-- Tooltip 或等价悬浮说明；
-- 可见的键盘焦点状态；
-- 禁用原因或可理解的禁用状态。
-
-当图标旁边已有完整文字标签时，图标应设置为装饰性内容，避免屏幕阅读器重复朗读。
-
-示例：
-
-```
-<el-icon aria-hidden="true">
-  <component :is="AppIcons.action.search" />
-</el-icon>
-<span>查询</span>
-```
-
-禁止使用只有图标、没有可访问名称的交互控件。
+- 纯图标按钮只用于图标语义明确、空间受限的操作区域；
+- 常规页面操作优先使用“图标 + 文字”按钮；
+- 未接入的图标操作保持可点击，并在点击后统一显示“待接入”气泡提示；
+- 危险操作仍需使用危险语义和确认机制。
 
 ## 11. 导航图标
 
-导航配置应直接保存图标组件，不得使用文字首字、Emoji 或 CSS 方块代替图标。
+导航属性统一配置在路由 `meta.navigation` 中，并直接保存图标组件；不得在其他文件复制第二份导航定义，也不得使用文字首字、Emoji 或 CSS 方块代替图标。
 
 推荐类型：
 
@@ -316,7 +300,7 @@ export interface NavigationItem {
 推荐渲染：
 
 ```
-<el-icon class="app-sidebar__link-icon" aria-hidden="true">
+<el-icon class="app-sidebar__link-icon">
   <component :is="item.icon" />
 </el-icon>
 ```
@@ -388,13 +372,6 @@ ESLint 应限制业务代码直接导入图标库：
 - 不用远程 URL 作为核心界面资源；
 - 新增前确认 Element Plus Icons 中没有合适的通用图标。
 
-### 13.4 无障碍要求
-
-- 纯装饰图片使用空 `alt`；
-- 承载信息的 SVG 图片必须提供准确、简短的替代文本；
-- 复杂流程图或证据链图必须在相邻区域提供等价文字说明；
-- 交互控件不得只依赖 SVG 图形表达操作含义。
-
 ## 14. AI 编程强制检查
 
 AI 在生成或修改涉及图标的代码前，必须：
@@ -406,20 +383,18 @@ AI 在生成或修改涉及图标的代码前，必须：
 5. 说明新增图标的业务含义；
 6. 禁止自行安装其他图标库；
 7. 禁止使用 Emoji、Unicode 符号、文字首字、CSS 图形和临时内联 SVG；
-8. 确认纯图标按钮具有无障碍名称和 Tooltip。
+8. 确认纯图标按钮统一使用 `IconButton.vue`。
 
 ## 15. 提交前检查清单
 
 - 通用图标全部来自 `@element-plus/icons-vue`；
 - 业务文件统一从 `@/icons` 导入；
-- 没有引入第二套图标库；
 - 没有 Emoji 或 Unicode 图形符号；
 - 没有文字首字、CSS 图形或临时内联 SVG 冒充通用图标；
 - 图标尺寸使用统一令牌；
 - 图标颜色默认继承 `currentColor`；
 - 同一语义使用同一图标；
-- 纯图标按钮使用 `IconButton.vue`；
-- 纯图标按钮具备 Tooltip 和 `aria-label`；
+- 纯图标按钮统一使用 `IconButton.vue`；
 - 状态没有只依赖图标和颜色表达；
-- 正式 SVG 静态资源的用途、目录、命名和无障碍信息符合本规范；
+- 正式 SVG 静态资源的用途、目录和命名符合本规范；
 - ESLint 图标导入边界检查通过。

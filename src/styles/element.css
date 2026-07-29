@@ -81,11 +81,6 @@
   box-shadow: 0 0 0 1px var(--rt-border-strong) inset;
 }
 
-.el-input__wrapper.is-focus,
-.el-select__wrapper.is-focused,
-.el-textarea__inner:focus {
-  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
-}
 
 .el-table {
   --el-table-border-color: var(--rt-border-subtle);

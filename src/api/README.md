@@ -72,3 +72,9 @@ export function listCases(
 docs/API_CONVENTIONS.md
 AGENTS.md
 ```
+
+## 5. 错误观测
+
+统一请求客户端会把非取消类 `ApiError` 发送到 `src/observability/`，记录请求方法、路径、状态码、错误码和请求编号，但不会记录请求体或查询参数内容。
+
+观测模块为避免递归上报，允许在自身传输实现中直接使用原生 `sendBeacon` 或 `fetch`；除此之外，浏览器端业务代码仍不得绕过 `src/api/request.ts`。

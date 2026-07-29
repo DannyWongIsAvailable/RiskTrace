@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { AppIcons } from '@/icons'
+import { showPendingIntegration } from '@/utils/interaction'
 
 const emit = defineEmits<{
   openNavigation: []
@@ -20,13 +21,8 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
 <template>
   <header class="app-topbar">
     <div class="app-topbar__leading">
-      <button
-        class="app-topbar__menu-button"
-        type="button"
-        aria-label="打开导航菜单"
-        @click="emit('openNavigation')"
-      >
-        <el-icon class="app-topbar__menu-icon" aria-hidden="true">
+      <button class="app-topbar__menu-button" type="button" @click="emit('openNavigation')">
+        <el-icon class="app-topbar__menu-icon">
           <component :is="AppIcons.layout.menu" />
         </el-icon>
         <span>菜单</span>
@@ -39,18 +35,18 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
 
     <div class="app-topbar__actions">
       <div class="app-topbar__system-status">
-        <span class="app-topbar__status-dot" aria-hidden="true" />
+        <span class="app-topbar__status-dot" />
         <span>系统运行正常</span>
       </div>
-      <button class="app-topbar__profile" type="button" aria-label="当前用户：系统管理员">
-        <span class="app-topbar__avatar" aria-hidden="true">
+      <button class="app-topbar__profile" type="button" @click="showPendingIntegration">
+        <span class="app-topbar__avatar">
           <el-icon class="app-topbar__avatar-icon">
             <component :is="AppIcons.account.user" />
           </el-icon>
         </span>
         <span class="app-topbar__profile-copy">
           <strong>系统管理员</strong>
-          <span>合规中心</span>
+          <span>账户与设置</span>
         </span>
       </button>
     </div>
@@ -102,31 +98,26 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
 }
 
 .app-topbar__menu-icon {
-  flex: 0 0 auto;
   color: currentColor;
   font-size: var(--rt-icon-size-md);
 }
 
-.app-topbar__page-context {
+.app-topbar__page-context,
+.app-topbar__profile-copy {
   display: flex;
-  align-items: center;
-  gap: var(--rt-space-3);
+  flex-direction: column;
 }
 
 .app-topbar__page-title {
   color: var(--rt-text-primary);
   font-size: var(--rt-font-size-md);
-  font-weight: 750;
+  font-weight: 760;
 }
 
 .app-topbar__environment {
-  padding: 3px 7px;
-  border: 1px solid var(--rt-border-default);
-  border-radius: var(--rt-radius-round);
-  background: var(--rt-bg-subtle);
+  margin-top: 2px;
   color: var(--rt-text-tertiary);
   font-size: 11px;
-  font-weight: 700;
 }
 
 .app-topbar__system-status {
@@ -138,45 +129,43 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
 .app-topbar__status-dot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
-  background: var(--rt-color-success-500);
-  box-shadow: 0 0 0 3px var(--rt-color-success-50);
+  border-radius: var(--rt-radius-round);
+  background: var(--rt-color-success-600);
 }
 
 .app-topbar__profile {
   gap: var(--rt-space-3);
-  padding: 6px 8px;
-  border-radius: var(--rt-radius-md);
+  padding: 0;
   background: transparent;
-  cursor: pointer;
+  color: var(--rt-text-primary);
   text-align: left;
 }
 
+.app-topbar__profile {
+  cursor: pointer;
+}
+
 .app-topbar__profile:hover {
-  background: var(--rt-bg-hover);
+  opacity: 0.78;
 }
 
 .app-topbar__avatar {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   place-items: center;
-  border-radius: 50%;
-  background: var(--rt-color-primary-100);
-  color: var(--rt-color-primary-800);
+  border: 1px solid var(--rt-color-primary-200);
+  border-radius: var(--rt-radius-round);
+  background: var(--rt-color-primary-50);
+  color: var(--rt-color-primary-700);
 }
 
 .app-topbar__avatar-icon {
-  color: currentColor;
-  font-size: var(--rt-icon-size-lg);
+  font-size: var(--rt-icon-size-md);
 }
 
-.app-topbar__profile-copy {
-  display: flex;
-  flex-direction: column;
-  color: var(--rt-text-primary);
-  font-size: var(--rt-font-size-xs);
-  line-height: 1.3;
+.app-topbar__profile-copy strong {
+  font-size: var(--rt-font-size-sm);
 }
 
 .app-topbar__profile-copy span {
@@ -193,7 +182,9 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
   .app-topbar__menu-button {
     display: inline-flex;
   }
+}
 
+@media (max-width: 640px) {
   .app-topbar__system-status,
   .app-topbar__profile-copy,
   .app-topbar__environment {

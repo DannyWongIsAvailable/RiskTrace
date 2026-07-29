@@ -24,11 +24,13 @@ withDefaults(
     class="error-state"
     :class="{ 'error-state--compact': compact }"
     icon="error"
-    :title="title"
-    :sub-title="description"
-    role="alert"
-    aria-live="assertive"
   >
+    <template #title>
+      <p class="error-state__title">{{ title }}</p>
+    </template>
+    <template #sub-title>
+      <p class="error-state__subtitle">{{ description }}</p>
+    </template>
     <template #extra>
       <slot name="action">
         <el-button type="primary" plain @click="emit('retry')">
@@ -55,11 +57,11 @@ withDefaults(
   height: var(--rt-icon-size-state);
 }
 
-.error-state :deep(.el-result__title) {
+.error-state__title {
   margin-top: var(--rt-space-4);
 }
 
-.error-state :deep(.el-result__subtitle) {
+.error-state__subtitle {
   max-width: 520px;
   margin-right: auto;
   margin-left: auto;

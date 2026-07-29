@@ -5,11 +5,20 @@ import { getHealth, type HealthInfo } from '@/api/modules'
 import { recentActivities, dashboardMetrics, topRiskCases } from '@/mocks/dashboard'
 import type { RiskCaseSummary } from '@/types/dashboard'
 import type { StatusTone } from '@/types/ui'
+import { showPendingIntegration } from '@/utils/interaction'
 
 const health = ref<HealthInfo | null>(null)
 const healthLoading = ref(true)
 const healthError = ref(false)
 const controller = new AbortController()
+
+const activityToneStyles: Record<StatusTone, { background: string }> = {
+  neutral: { background: 'var(--rt-color-info-500)' },
+  primary: { background: 'var(--rt-color-primary-600)' },
+  success: { background: 'var(--rt-color-success-600)' },
+  warning: { background: 'var(--rt-color-warning-600)' },
+  danger: { background: 'var(--rt-color-danger-600)' },
+}
 
 function riskLevelTone(level: RiskCaseSummary['riskLevel']): StatusTone {
   if (level === '重大风险') {
@@ -60,8 +69,8 @@ onBeforeUnmount(() => controller.abort())
       description="统一查看采购事件、风险等级、处置进度与系统分析活动。当前页面使用集中维护的演示数据，用于验证设计系统和组件边界。"
     >
       <template #actions>
-        <el-button>导出报告</el-button>
-        <el-button type="primary">导入演示案例</el-button>
+        <el-button @click="showPendingIntegration">导出报告</el-button>
+        <el-button type="primary" @click="showPendingIntegration">导入演示案例</el-button>
       </template>
     </PageHeader>
 
@@ -84,7 +93,7 @@ onBeforeUnmount(() => controller.abort())
         description="按综合风险分数与待处理时长排序"
       >
         <template #actions>
-          <el-button text>查看全部</el-button>
+          <el-button text @click="showPendingIntegration">查看全部</el-button>
         </template>
 
         <el-table :data="topRiskCases" table-layout="fixed">
@@ -162,7 +171,10 @@ onBeforeUnmount(() => controller.abort())
         <BaseCard title="最近分析活动" description="Agent 与人工处置的统一时间线">
           <ul class="dashboard__activity-list">
             <li v-for="activity in recentActivities" :key="activity.id" class="dashboard__activity">
-              <span class="dashboard__activity-line" :class="`dashboard__activity-line--${activity.tone}`" />
+              <span
+                class="dashboard__activity-line"
+                :style="activityToneStyles[activity.tone]"
+              />
               <div class="dashboard__activity-copy">
                 <div class="dashboard__activity-title-row">
                   <strong>{{ activity.title }}</strong>
@@ -270,22 +282,6 @@ onBeforeUnmount(() => controller.abort())
   flex: 0 0 auto;
   border-radius: var(--rt-radius-round);
   background: var(--rt-color-info-500);
-}
-
-.dashboard__activity-line--primary {
-  background: var(--rt-color-primary-600);
-}
-
-.dashboard__activity-line--success {
-  background: var(--rt-color-success-600);
-}
-
-.dashboard__activity-line--warning {
-  background: var(--rt-color-warning-600);
-}
-
-.dashboard__activity-line--danger {
-  background: var(--rt-color-danger-600);
 }
 
 .dashboard__activity-copy {

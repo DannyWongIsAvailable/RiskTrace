@@ -12,8 +12,20 @@ withDefaults(
 </script>
 
 <template>
-  <RouterLink class="app-logo" :class="{ 'app-logo--inverse': inverse }" to="/dashboard">
-    <img class="app-logo__mark" src="/brand/risktrace-mark.svg" alt="" width="36" height="36" />
+  <RouterLink
+    class="app-logo"
+    :class="{ 'app-logo--inverse': inverse }"
+    to="/dashboard"
+    :aria-label="compact ? 'RiskTrace 首页' : undefined"
+  >
+    <img
+      class="app-logo__mark"
+      src="/brand/risktrace-mark.svg"
+      width="36"
+      height="36"
+      alt=""
+      aria-hidden="true"
+    />
     <span v-if="!compact" class="app-logo__copy">
       <strong class="app-logo__name">RiskTrace</strong>
       <span class="app-logo__descriptor">合规风控平台</span>

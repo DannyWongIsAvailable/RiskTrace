@@ -1,15 +1,16 @@
 import { success } from '../_shared/http'
 
-interface Env {
-  APP_NAME?: string
-  APP_ENV?: string
+type RequestData = {
+  requestId?: string
 }
 
-export const onRequestGet: PagesFunction<Env> = async (context) => {
-  return success({
-    appName: context.env.APP_NAME ?? 'RiskTrace',
-    environment: context.env.APP_ENV ?? 'development',
-    status: 'healthy' as const,
-    timestamp: new Date().toISOString(),
-  })
-}
+export const onRequestGet: PagesFunction<Env, string, RequestData> = ({ env, data }) =>
+  success(
+    {
+      appName: env.APP_NAME,
+      environment: env.APP_ENV,
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+    },
+    { requestId: data.requestId },
+  )

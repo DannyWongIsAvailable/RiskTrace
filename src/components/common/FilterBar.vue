@@ -3,18 +3,16 @@ withDefaults(
   defineProps<{
     title?: string
     description?: string
-    ariaLabel?: string
   }>(),
   {
     title: undefined,
     description: undefined,
-    ariaLabel: '筛选条件',
   },
 )
 </script>
 
 <template>
-  <BaseCard class="filter-bar" padding="sm" role="search" :aria-label="ariaLabel">
+  <BaseCard class="filter-bar" padding="sm">
     <div class="filter-bar__layout">
       <div v-if="title || description" class="filter-bar__heading">
         <strong v-if="title" class="filter-bar__title">{{ title }}</strong>

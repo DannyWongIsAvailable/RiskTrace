@@ -26,6 +26,7 @@
   --rt-color-danger-200: #fecaca;
   --rt-color-danger-500: #ef4444;
   --rt-color-danger-600: #dc2626;
+  --rt-color-danger-800: #991b1b;
   --rt-color-info-50: #f8fafc;
   --rt-color-info-500: #64748b;
   --rt-color-info-600: #475569;
@@ -66,7 +67,6 @@
   --rt-border-subtle: #edf1f7;
   --rt-border-default: #dfe5ee;
   --rt-border-strong: #cbd5e1;
-  --rt-border-focus: var(--rt-color-primary-500);
 
   /* Typography */
   --rt-font-family:

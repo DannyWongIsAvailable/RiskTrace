@@ -36,7 +36,7 @@ RiskTrace 是企业级采购合规与风险控制系统，界面应当：
 - 品牌、业务流程、证据链及领域专属图形可以使用正式 SVG 静态资源；
 - 开发阶段可使用明确标注的 `*-placeholder.svg`，但正式发布前必须替换或移除；
 - 纯图标按钮使用 `IconButton.vue`；
-- 纯图标按钮必须有 Tooltip 与 `aria-label`；
+- 纯图标按钮统一使用 `IconButton.vue`；
 - 图标默认继承 `currentColor`；
 - 同一业务语义必须使用同一图标；
 - 完整规范见 `docs/ICON_SYSTEM.md`。
@@ -84,15 +84,7 @@ views
 5. 确认视觉使用现有设计令牌；
 6. 确认图标来自 `@/icons`，没有直接导入图标库；
 7. 确认没有用 Emoji、Unicode 符号、文字首字、CSS 图形、临时内联 SVG 或假数据填充页面；
-8. 确认纯图标按钮具备 Tooltip 和 `aria-label`；
-9. 确认功能具备加载、空数据和错误处理。
-
-## 6. 交付前最低检查
-
-```bash
-pnpm type-check
-pnpm type-check:functions
-pnpm lint
-pnpm format:check
-pnpm build-only
-```
+8. 确认纯图标按钮统一使用 `IconButton.vue`；
+9. 确认功能具备加载、空数据和错误处理；
+10. 未实现的操作保持可点击，点击后统一显示“待接入”气泡提示；
+11. 新增异常路径必须接入 `src/observability/`。

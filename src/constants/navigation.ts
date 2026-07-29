@@ -1,44 +1,31 @@
-import { AppIcons } from '@/icons'
+import type { Router } from 'vue-router'
+
+import type { NavigationGroup } from '@/router/meta'
 import type { NavigationItem } from '@/types/ui'
 
-export const mainNavigation: NavigationItem[] = [
-  {
-    key: 'dashboard',
-    label: '风险总览',
-    to: '/dashboard',
-    icon: AppIcons.navigation.dashboard,
-    description: '关键指标与风险态势',
-  },
-  {
-    key: 'cases',
-    label: '风险事件',
-    to: '/cases',
-    icon: AppIcons.navigation.cases,
-    description: '采购事件与证据链',
-  },
-  {
-    key: 'tasks',
-    label: '处置中心',
-    to: '/tasks',
-    icon: AppIcons.navigation.tasks,
-    description: '复核、补件与处置任务',
-  },
-  {
-    key: 'rules',
-    label: '规则中心',
-    to: '/rules',
-    icon: AppIcons.navigation.rules,
-    description: '规则、阈值与策略配置',
-  },
-]
+export function getNavigationItems(router: Router, group: NavigationGroup): NavigationItem[] {
+  return router
+    .getRoutes()
+    .filter((route) => route.meta.navigation?.group === group)
+    .sort(
+      (left, right) =>
+        (left.meta.navigation?.order ?? Number.MAX_SAFE_INTEGER) -
+        (right.meta.navigation?.order ?? Number.MAX_SAFE_INTEGER),
+    )
+    .map((route) => {
+      const navigation = route.meta.navigation
 
-export const supportNavigation: NavigationItem[] = [
-  {
-    key: 'foundation',
-    label: '设计系统',
-    to: '/foundation',
-    icon: AppIcons.navigation.foundation,
-    description: '基础组件与视觉规范',
-    group: '工程支持',
-  },
-]
+      if (!navigation) {
+        throw new Error(`路由 ${route.path} 缺少导航配置`)
+      }
+
+      return {
+        key: route.name ? String(route.name) : route.path,
+        label: navigation.label ?? String(route.meta.title ?? route.name ?? route.path),
+        to: route.path,
+        icon: navigation.icon,
+        description: navigation.description,
+        badge: navigation.badge,
+      }
+    })
+}

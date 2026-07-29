@@ -68,6 +68,8 @@ POST /api/cases/:id/analysis-runs
 - `details` 仅用于结构化校验信息或安全的补充上下文；
 - 禁止返回堆栈、SQL、密钥、内部文件路径和第三方供应商原始响应；
 - 前端程序逻辑根据稳定错误码分支，不根据可读文案分支。
+- 所有响应头必须包含 `X-Request-Id`；
+- JSON 响应的 `meta.requestId` 应与响应头一致。
 
 ## 3. HTTP 状态码建议
 
@@ -230,6 +232,9 @@ Pages Functions 应复用 `functions/_shared/http.ts` 中的响应工具。
 - 返回用户可理解、但不泄露内部信息的错误；
 - 每个需要审计的业务动作写入审计记录；
 - 环境变量和密钥仅通过绑定读取。
+- 路由从 `context.data.requestId` 读取全局中间件生成的请求编号，并传入 `success` 或 `failure`；
+- 未处理异常由 `functions/_middleware.ts` 统一记录和转换为 500 响应；
+- 日志使用结构化 JSON，至少包含请求编号、方法、路径、状态码和耗时。
 
 ## 12. 接口变更原则
 
