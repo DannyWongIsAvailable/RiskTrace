@@ -96,7 +96,7 @@ import {
 export const AppIcons = {
   navigation: {
     dashboard: DataAnalysis,
-    cases: DocumentChecked,
+    projects: DocumentChecked,
     tasks: Finished,
     rules: Setting,
     foundation: Grid,
@@ -155,7 +155,7 @@ import { AppIcons } from '@/icons'
 | 场景 | 建议图标 |
 |---|---|
 | 风险驾驶舱 | `DataAnalysis` |
-| 风险事件 | `DocumentChecked` |
+| 采购项目 | `DocumentChecked` |
 | 处置任务 | `Finished` |
 | 规则中心 | `Setting` |
 | 搜索 | `Search` |

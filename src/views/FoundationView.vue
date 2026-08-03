@@ -15,7 +15,7 @@ const pageSize = ref(20)
 const lastActionReason = ref('')
 
 const descriptionItems: DescriptionItem[] = [
-  { key: 'caseNo', label: '事件编号', value: 'RT-CASE-2026-001' },
+  { key: 'findingNo', label: '事项编号', value: 'RT-FINDING-2026-001' },
   { key: 'supplier', label: '供应商', value: '海岳精密设备有限公司' },
   { key: 'amount', label: '涉及金额', value: '¥1,331,100' },
   { key: 'owner', label: '复核负责人', value: '合规中心' },
@@ -65,7 +65,7 @@ function handleConfirmAction(reason: string): void {
       <BaseCard>
         <div class="foundation__inline-list">
           <StatusTag label="默认状态" />
-          <StatusTag label="分析中" tone="primary" />
+          <StatusTag label="审查中" tone="primary" />
           <StatusTag label="已通过" tone="success" />
           <StatusTag label="需关注" tone="warning" />
           <StatusTag label="重大风险" tone="danger" />
@@ -78,8 +78,8 @@ function handleConfirmAction(reason: string): void {
         title="筛选工具栏"
         description="页面筛选条件集中呈现，不散落在表格与标题之间。"
       />
-      <FilterBar title="风险事件筛选" description="支持关键字与风险等级组合筛选">
-        <el-input v-model="keyword" placeholder="事件编号、供应商或项目名称" clearable />
+      <FilterBar title="风险事项筛选" description="支持关键字与风险等级组合筛选">
+        <el-input v-model="keyword" placeholder="事项编号、供应商或采购项目名称" clearable />
         <el-select v-model="riskLevel" placeholder="风险等级" clearable>
           <el-option label="重大风险" value="critical" />
           <el-option label="高风险" value="high" />
@@ -96,7 +96,7 @@ function handleConfirmAction(reason: string): void {
       <SectionHeader title="内容状态" description="所有数据区域必须覆盖加载、空、错误和成功状态。" />
       <div class="foundation__state-grid">
         <BaseCard title="加载状态" padding="none">
-          <LoadingState v-if="loadingDemo" title="正在读取风险事件" :rows="5" />
+          <LoadingState v-if="loadingDemo" title="正在读取风险事项" :rows="5" />
           <EmptyState
             v-else
             compact

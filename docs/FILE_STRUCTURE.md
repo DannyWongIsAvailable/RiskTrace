@@ -68,8 +68,8 @@ RiskTrace/
 
 ```text
 DashboardView.vue
-CaseListView.vue
-CaseDetailView.vue
+ProjectListView.vue
+ProjectDetailView.vue
 TaskCenterView.vue
 ```
 
@@ -114,8 +114,8 @@ TaskCenterView.vue
 示例：
 
 ```text
-src/components/case/RiskCaseTable.vue
-src/components/case/EvidenceChain.vue
+src/components/project/ProjectTable.vue
+src/components/project/EvidenceChain.vue
 src/components/task/TaskDispositionPanel.vue
 ```
 
@@ -131,7 +131,7 @@ src/api/modules/         按业务领域划分的接口模块
 示例：
 
 ```text
-src/api/modules/cases.ts
+src/api/modules/projects.ts
 src/api/modules/tasks.ts
 src/api/modules/rules.ts
 ```

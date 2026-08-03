@@ -10,9 +10,9 @@ export interface DashboardMetric {
   tone?: StatusTone
 }
 
-export interface RiskCaseSummary {
+export interface RiskFindingSummary {
   id: string
-  caseNo: string
+  findingNo: string
   title: string
   supplier: string
   amount: string

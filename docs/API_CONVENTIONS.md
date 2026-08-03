@@ -5,21 +5,21 @@
 所有业务接口统一放在 `/api` 下，优先使用 REST 风格的资源名词：
 
 ```text
-GET    /api/cases
-POST   /api/cases
-GET    /api/cases/:id
-PATCH  /api/cases/:id
-POST   /api/cases/:id/actions
+GET    /api/projects
+POST   /api/projects
+GET    /api/projects/:projectId
+PATCH  /api/projects/:projectId
+POST   /api/projects/:projectId/actions
 GET    /api/tasks
-PATCH  /api/tasks/:id
+PATCH  /api/tasks/:taskId
 ```
 
 路径中尽量避免直接使用动作动词。
 只有当某项操作属于明确的业务命令，且无法通过常规资源更新准确表达时，才使用动作型子资源，例如：
 
 ```text
-POST /api/cases/:id/actions
-POST /api/cases/:id/analysis-runs
+POST /api/projects/:projectId/actions
+POST /api/projects/:projectId/reviews
 ```
 
 接口路径：
@@ -51,8 +51,8 @@ POST /api/cases/:id/analysis-runs
 ```json
 {
   "success": false,
-  "code": "CASE_NOT_FOUND",
-  "message": "未找到风险事件",
+  "code": "PROJECT_NOT_FOUND",
+  "message": "未找到采购项目",
   "details": {},
   "meta": {
     "requestId": "可选请求编号",
@@ -95,7 +95,7 @@ POST /api/cases/:id/analysis-runs
 VALIDATION_FAILED
 UNAUTHORIZED
 FORBIDDEN
-CASE_NOT_FOUND
+PROJECT_NOT_FOUND
 TASK_NOT_FOUND
 CONFLICTING_STATE
 RATE_LIMITED
@@ -107,7 +107,7 @@ INTERNAL_ERROR
 推荐按业务领域扩展：
 
 ```text
-CASE_ALREADY_CLOSED
+PROJECT_ALREADY_CLOSED
 PAYMENT_ALREADY_HELD
 REVIEW_REASON_REQUIRED
 RULE_CODE_CONFLICT
@@ -148,7 +148,7 @@ RULE_CODE_CONFLICT
 推荐格式：
 
 ```text
-GET /api/cases?page=1&pageSize=20&riskLevel=critical&status=pending&sort=-updatedAt
+GET /api/projects?page=1&pageSize=20&riskLevel=critical&status=pending&sort=-updatedAt
 ```
 
 约定：

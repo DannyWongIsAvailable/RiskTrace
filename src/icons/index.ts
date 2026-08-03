@@ -27,7 +27,7 @@ import {
 export const AppIcons = {
   navigation: {
     dashboard: DataAnalysis,
-    cases: DocumentChecked,
+    projects: DocumentChecked,
     tasks: Finished,
     rules: Setting,
     foundation: Grid,

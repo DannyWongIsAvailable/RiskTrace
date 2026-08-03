@@ -2,8 +2,8 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { getHealth, type HealthInfo } from '@/api/modules'
-import { recentActivities, dashboardMetrics, topRiskCases } from '@/mocks/dashboard'
-import type { RiskCaseSummary } from '@/types/dashboard'
+import { recentActivities, dashboardMetrics, topRiskFindings } from '@/mocks/dashboard'
+import type { RiskFindingSummary } from '@/types/dashboard'
 import type { StatusTone } from '@/types/ui'
 import { showPendingIntegration } from '@/utils/interaction'
 
@@ -20,7 +20,7 @@ const activityToneStyles: Record<StatusTone, { background: string }> = {
   danger: { background: 'var(--rt-color-danger-600)' },
 }
 
-function riskLevelTone(level: RiskCaseSummary['riskLevel']): StatusTone {
+function riskLevelTone(level: RiskFindingSummary['riskLevel']): StatusTone {
   if (level === '重大风险') {
     return 'danger'
   }
@@ -32,7 +32,7 @@ function riskLevelTone(level: RiskCaseSummary['riskLevel']): StatusTone {
   return 'primary'
 }
 
-function taskStatusTone(status: RiskCaseSummary['status']): StatusTone {
+function taskStatusTone(status: RiskFindingSummary['status']): StatusTone {
   if (status === '处理中') {
     return 'primary'
   }
@@ -66,7 +66,7 @@ onBeforeUnmount(() => controller.abort())
     <PageHeader
       eyebrow="Procure-to-pay risk control"
       title="风险驾驶舱"
-      description="统一查看采购事件、风险等级、处置进度与系统分析活动。当前页面使用集中维护的演示数据，用于验证设计系统和组件边界。"
+      description="统一查看采购项目、风险事项、处置进度与合规审查活动。当前页面使用集中维护的演示数据，用于验证设计系统和组件边界。"
     >
       <template #actions>
         <el-button @click="showPendingIntegration">导出报告</el-button>
@@ -89,19 +89,19 @@ onBeforeUnmount(() => controller.abort())
 
     <div class="rt-grid rt-grid--two-columns">
       <BaseTableCard
-        title="重点风险事件"
+        title="重点风险事项"
         description="按综合风险分数与待处理时长排序"
       >
         <template #actions>
           <el-button text @click="showPendingIntegration">查看全部</el-button>
         </template>
 
-        <el-table :data="topRiskCases" table-layout="fixed">
-          <el-table-column prop="caseNo" label="事件编号" width="170" />
-          <el-table-column label="风险事件" min-width="260">
+        <el-table :data="topRiskFindings" table-layout="fixed">
+          <el-table-column prop="findingNo" label="事项编号" width="170" />
+          <el-table-column label="风险事项" min-width="260">
             <template #default="scope">
-              <div class="dashboard__case-title">{{ scope.row.title }}</div>
-              <div class="dashboard__case-supplier">{{ scope.row.supplier }}</div>
+              <div class="dashboard__finding-title">{{ scope.row.title }}</div>
+              <div class="dashboard__finding-supplier">{{ scope.row.supplier }}</div>
             </template>
           </el-table-column>
           <el-table-column prop="amount" label="涉及金额" width="130" />
@@ -132,7 +132,7 @@ onBeforeUnmount(() => controller.abort())
         <template #footer>
           <div class="dashboard__table-footer">
             <span>数据更新时间：今日 10:22</span>
-            <span>共 8 个风险事件</span>
+            <span>共 8 项风险事项</span>
           </div>
         </template>
       </BaseTableCard>
@@ -168,7 +168,7 @@ onBeforeUnmount(() => controller.abort())
           </div>
         </BaseCard>
 
-        <BaseCard title="最近分析活动" description="Agent 与人工处置的统一时间线">
+        <BaseCard title="最近合规审查活动" description="Agent 与人工处置的统一时间线">
           <ul class="dashboard__activity-list">
             <li v-for="activity in recentActivities" :key="activity.id" class="dashboard__activity">
               <span
@@ -198,7 +198,7 @@ onBeforeUnmount(() => controller.abort())
   gap: var(--rt-space-4);
 }
 
-.dashboard__case-title {
+.dashboard__finding-title {
   overflow: hidden;
   color: var(--rt-text-primary);
   font-weight: 700;
@@ -206,7 +206,7 @@ onBeforeUnmount(() => controller.abort())
   white-space: nowrap;
 }
 
-.dashboard__case-supplier {
+.dashboard__finding-supplier {
   overflow: hidden;
   margin-top: 3px;
   color: var(--rt-text-tertiary);

@@ -1,1532 +1,1366 @@
-# RiskTrace采购到付款合规风控平台
+# RiskTrace Demo 应用设计方案
 
-## 比赛MVP Demo设计方案
-
-## 一、项目概述
-
-### 1.1 产品名称
-
-**RiskTrace——采购到付款全过程合规风控平台**
-
-产品副标题：
-
-> 基于多模态证据理解与多智能体协同的供应链合规控制层
-
-### 1.2 一句话定位
-
-RiskTrace连接企业现有ERP、SRM、合同和财务系统，对合同、订单、发票、验收材料和付款记录进行跨文档、跨流程联合分析，主动发现组合风险，生成可追溯证据链，并完成分级处置与审计留痕。
-
-### 1.3 MVP不做什么
-
-本项目不重新开发完整采购系统，也不在MVP阶段实现真实ERP连接、真实银行冻结、复杂用户权限体系或大规模机器学习训练。
-
-MVP只验证四项核心价值：
-
-1. 能否把合同、订单、发票、验收和付款数据组织为统一采购事件；
-2. 能否发现单一系统难以识别的跨环节组合风险；
-3. 能否说明风险来自哪些文件、字段、规则和业务行为；
-4. 能否将风险判断转化为补件、复核、暂缓付款和重新评估动作。
+> 版本：v1.1（R2 URL 单链路方案）  
+> 修订日期：2026-08-03  
+> 技术栈：Vue 3 + TypeScript + Cloudflare Pages Functions + R2 + D1 + 讯飞星辰 Agent 工作流
 
 ---
 
-# 二、MVP核心演示案例
+## 1. 方案摘要
 
-## 2.1 案例名称
+RiskTrace 是一套面向企业采购项目付款前控制的智能合规审查 Demo。用户在前端一次性上传采购申请、预算审批、供应商资料、报价与定标文件、合同、订单、交付验收材料、发票和付款申请等已有材料；原始文件统一保存到 Cloudflare R2，文件元数据和业务状态保存到 D1。
 
-**海岳精密设备采购异常付款事件**
+系统随后通过讯飞星辰工作流完成：
 
-案例编号：
+1. 材料分类与完整性检查；
+2. 通过 R2 短时 GET URL 调用 OCR、Excel 等工具完成材料读取与结构化抽取；
+3. 多个审查 Agent 从采购程序、合同条款、履约验收、票款一致性、供应商与收款账户等维度进行分析；
+4. 聚合 Agent 合并多维审查结果、消除重复和冲突；
+5. 输出带有证据定位的风险报告、付款条件就绪度和处置建议；
+6. 人工执行暂缓付款、发起补件、指派复核、关闭误报等处置动作，并形成审计留痕。
 
-```text
-RT-CASE-2026-001
-```
-
-## 2.2 案例背景
-
-演示企业“华南智造有限公司”向“海岳精密设备有限公司”采购一批工业传感器，合同金额为人民币1,480,000元。
-
-企业采购制度规定：
-
-* 单笔或同一项目累计采购金额达到500,000元时，必须经过采购总监和财务总监联合审批；
-* 禁止拆分订单规避审批；
-* 付款前必须具备有效合同、发票和验收材料；
-* 付款账户必须与合同备案账户一致；
-* 收款账户发生变更时，必须提交加盖供应商公章的账户变更函并重新审批；
-* 首次付款不得超过合同金额的90%，剩余10%作为质保金。
-
-## 2.3 演示数据
-
-### 合同
+### 1.1 核心链路
 
 ```text
-合同编号：HT-2026-0715
-供应商：海岳精密设备有限公司
-合同金额：¥1,480,000
-首次付款比例：90%
-质保金比例：10%
-合同收款账户尾号：3028
-付款前置条件：验收合格并取得有效发票
+前端新建采购项目并选择全部材料
+        ↓
+Pages Functions 创建上传会话和 R2 预签名 PUT URL
+        ↓
+浏览器将文件直接上传到私有 R2
+        ↓
+Pages Functions 校验上传结果，在 D1 保存文件元数据
+        ↓
+用户点击“发起合规审查”
+        ↓
+Pages Functions 为每份材料生成 R2 短时 GET URL
+        ↓
+URL 作为工作流开始节点文件变量传入星辰
+        ↓
+OCR、Excel 等文件解析工具通过 URL 获取并解析材料
+        ↓
+材料解析工作流生成统一材料事实包
+        ↓
+多个领域审查 Agent 多维度分析
+        ↓
+聚合 Agent 输出标准化 JSON
+        ↓
+Pages Functions 校验结果并写入 D1
+        ↓
+前端展示付款就绪度、风险、证据、建议和处置入口
 ```
 
-### 采购订单
+### 1.2 关键技术结论
 
-同一采购人员在48小时内创建三笔订单：
-
-| 订单编号            |       金额 | 创建时间       |
-| --------------- | -------: | ---------- |
-| PO-2026-0718-01 | ¥492,000 | 7月18日09:21 |
-| PO-2026-0718-02 | ¥488,000 | 7月18日15:36 |
-| PO-2026-0719-01 | ¥499,000 | 7月19日10:07 |
-
-订单总金额为：
-
-```text
-¥1,479,000
-```
-
-每笔订单均低于500,000元审批阈值，但采购项目、供应商、物料类别、申请人和交付地址完全相同。
-
-### 发票
-
-```text
-发票金额：¥1,479,000
-销售方：海岳精密设备有限公司
-购买方：华南智造有限公司
-发票状态：已验真
-```
-
-### 验收材料
-
-系统发现：
-
-* 付款申请提交时，验收报告尚未上传；
-* 验收报告在付款被提示风险后才补充上传；
-* 报告填写的验收日期早于文件实际上传时间；
-* 验收图片与另一个历史项目的图片高度相似。
-
-MVP不需要实现高精度图像鉴伪，可以直接使用预先计算的图片相似度结果：
-
-```text
-图片相似度：94.7%
-```
-
-### 付款申请
-
-```text
-付款申请编号：PAY-2026-0725-01
-付款金额：¥1,331,100
-实际收款账户尾号：7619
-合同账户尾号：3028
-付款状态：待支付
-```
-
-付款金额本身等于订单总金额的90%，比例没有问题，但实际收款账户与合同不一致，且没有账户变更函。
+- **前端可以直接上传 R2**：后端生成限时、限对象、限操作的预签名 PUT URL，浏览器直接向 R2 上传，不需要让大文件经过 Pages Functions。
+- **R2 保留原始材料**：R2 是系统的主文件存储，D1 只保存元数据、运行状态和审查结果，不保存大文件正文。
+- **统一采用“URL → 文件解析工具”**：RiskTrace 只向星辰传入 R2 短时 GET URL；OCR、Excel 等工具节点通过 URL 获取并解析文件，再把文本或结构化数据交给模型节点。方案不调用星辰文件上传接口，也不依赖星辰目录。
+- **不要把星辰描述成“可操作的工作目录”**：公开文档未提供由 RiskTrace 创建、指定、浏览或清理的星辰本地目录。文件获取和临时处理属于星辰平台内部行为，系统只依赖文件 URL 和工具解析结果。
+- **多 Agent 通过子工作流实现**：星辰工作流节点可以嵌套已发布工作流，每个子工作流作为独立领域 Agent，由总控工作流或 RiskTrace 后端进行编排。
+- **长任务采用异步接口**：创建工作流异步任务后保存 `execute_id`，前端轮询 RiskTrace 后端，后端再查询星辰任务状态；不能让一个 HTTP 请求一直等待全部材料审查完成。
 
 ---
 
-# 三、系统最终应识别的风险
+## 2. 项目定位
 
-## 3.1 原子风险信号
+### 2.1 产品名称
 
-系统需要识别以下风险信号：
+**RiskTrace 企业采购项目智能合规审查 Demo**
 
-| 风险编号  | 风险信号           | 建议权重 |
-| ----- | -------------- | ---: |
-| R-001 | 疑似拆单规避高级审批     |   30 |
-| R-002 | 实际付款账户与合同账户不一致 |   35 |
-| R-003 | 付款申请时缺少有效验收材料  |   25 |
-| R-004 | 验收报告存在事后补录迹象   |   20 |
-| R-005 | 验收图片与历史项目高度相似  |   20 |
+### 2.2 一句话定位
 
-## 3.2 风险融合结论
+RiskTrace 在付款前重建采购申请、供应商、合同、订单、履约、验收、发票和付款之间的证据链，识别程序违规、履约异常、票款不符与收款账户风险，并支持人工复核、补件整改、暂缓付款和审计留痕。
 
-系统不应只显示五条独立告警，而应将其融合为一个风险事件：
+### 2.3 目标用户
 
-> 同一采购项目被拆分为三笔低于审批阈值的订单，付款申请使用了合同外收款账户，且付款申请提交时缺少有效验收材料。后续补充的验收报告存在事后补录和图片复用迹象。多项信号共同表明该付款可能存在规避审批、材料补录或收款账户异常风险。
+- 企业采购负责人；
+- 财务应付与资金审核人员；
+- 法务和合规人员；
+- 内部审计人员；
+- 项目负责人和业务验收人员。
 
-综合风险分数：
+### 2.4 比赛版本目标
 
-```text
-92 / 100
-```
-
-风险等级：
+比赛 MVP 聚焦一条可完整演示的业务闭环：
 
 ```text
-重大风险
+材料归集
+→ 智能解析
+→ 多 Agent 审查
+→ 风险证据展示
+→ 付款建议
+→ 人工处置
+→ 审计留痕
 ```
 
-推荐动作：
+### 2.5 比赛版本暂不建设
 
-```text
-暂缓付款
-要求补充账户变更函
-升级合规负责人复核
-核验验收报告真实性
-```
+- 完整采购交易、库存和财务核算系统；
+- 完整多租户组织、角色和细粒度权限体系；
+- 银企直联和真实资金支付；
+- 全量工商、司法、发票查验等外部商业数据接口；
+- 对所有文件格式和复杂版式的生产级兼容。
+
+比赛版本仍需实现最低安全边界：私有 R2、限时签名地址、密钥使用 Secret 保存、文件类型和大小校验、敏感字段不写日志、模型结果校验和操作审计。
 
 ---
 
-# 四、端到端演示故事线
+## 3. 官方能力依据与实现边界
 
-MVP演示围绕一个案例完成，不需要频繁切换多个零散功能。
+### 3.1 Cloudflare R2
 
-```text
-导入演示案例
-    ↓
-建立采购事件数字档案
-    ↓
-数据感知Agent解析五类材料
-    ↓
-合同义务Agent生成付款控制条件
-    ↓
-交易核验Agent执行五链匹配
-    ↓
-流程行为Agent发现拆单与补录
-    ↓
-风险研判Agent融合证据并评级
-    ↓
-处置编排Agent建议暂缓付款
-    ↓
-合规人员确认处置
-    ↓
-补充账户变更函并重新评估
-    ↓
-记录人工反馈与完整审计日志
-```
+Cloudflare 官方支持使用预签名 URL，为指定对象授予限时的 GET、PUT、HEAD 或 DELETE 权限。浏览器直传需要配置 R2 CORS；预签名 URL 应视为临时 bearer token，不应长期保存或公开。
 
-建议整段路演控制在3至5分钟。
+官方文档：
+
+- R2 Presigned URLs：<https://developers.cloudflare.com/r2/api/s3/presigned-urls/>
+- R2 浏览器直传：<https://developers.cloudflare.com/r2/objects/upload-objects/>
+- R2 CORS：<https://developers.cloudflare.com/r2/buckets/cors/>
+- Pages Functions Bindings：<https://developers.cloudflare.com/pages/functions/bindings/>
+- R2 Workers API：<https://developers.cloudflare.com/r2/api/workers/workers-api-usage/>
+
+### 3.2 讯飞星辰工作流 API
+
+讯飞官方工作流 API 支持：
+
+- 工作流发布为 API；
+- 通过 `parameters` 传入开始节点参数，包括 R2 短时文件 URL；
+- 工具节点通过 `file_url` 或开始节点文件变量获取并解析材料；
+- 异步创建任务 `POST /workflow/v1/async/chat/completions`；
+- 返回 `execute_id`；
+- 使用 `POST /workflow/v1/async/chat/result` 查询状态和结果；
+- 取消异步任务；
+- 工作流中断与恢复；
+- 工作流节点嵌套已发布子工作流，实现多 Agent 协同。
+
+官方文档：
+
+- 星辰 Agent API 接入：<https://www.xfyun.cn/doc/spark/Agent04-API%E6%8E%A5%E5%85%A5.html>
+- 星辰 Agent 开发指南：<https://www.xfyun.cn/doc/spark/Agent03-%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97.html>
+- 星辰 Agent 技术实践案例：<https://www.xfyun.cn/doc/spark/AgentNew-%E6%8A%80%E6%9C%AF%E5%AE%9E%E8%B7%B5%E6%A1%88%E4%BE%8B.html>
+- 星辰 Agent FAQ：<https://www.xfyun.cn/doc/spark/Agent06-FAQ.html>
+
+### 3.3 已有官方支持情况
+
+| 能力 | 官方依据 | 方案结论 |
+|---|---|---|
+| PDF、图片 OCR | 通用 OCR 大模型工具的 `file_url` 支持图片和 PDF | 可直接设计 |
+| Excel 读取 | 官方提供 Excel 表格数据提取工具和 Excel 工作流案例 | 使用 R2 短时 URL 作为开始节点文件变量，需在比赛账号验证 URL 参数形式 |
+| 多文件输入 | 开始节点文档展示单文件与多文件输入示例 | 可设计；每个文件均使用独立 R2 短时 URL |
+| 多 Agent 协同 | 工作流节点可嵌套已发布工作流 | 可直接设计 |
+| 结构化 JSON | 大模型节点输出格式支持 JSON，代码节点要求 JSON 输出 | 可直接设计，并在后端二次校验 |
+| 异步运行 | 异步创建、结果查询、取消接口 | 必须采用 |
+| Word/PPT 等文件 | 公开文档未明确说明所有文件解析工具均可直接消费外部 URL | 比赛版本由 RiskTrace 后端转为 PDF、文本或 JSON 派生件，再通过 URL/文本参数进入工作流 |
+| 真正并行执行多个子工作流 | 公开文档说明了嵌套，但未明确承诺并行调度 | 不在方案中承诺平台内真并行 |
+| 可操作“工作目录” | 公开文档未提供此概念 | 不使用该表述 |
 
 ---
 
-# 五、系统页面设计
-
-## 5.1 全局布局
-
-采用企业后台管理系统布局：
+## 4. 总体系统架构
 
 ```text
 ┌─────────────────────────────────────────────┐
-│ 顶部栏：RiskTrace / 当前企业 / 演示模式 / 用户 │
-├──────────┬──────────────────────────────────┤
-│ 左侧菜单  │ 主内容区                           │
-│          │                                  │
-│ 风险总览  │                                  │
-│ 采购事件  │                                  │
-│ 处置中心  │                                  │
-│ 规则中心  │                                  │
-│ 学习记录  │                                  │
-└──────────┴──────────────────────────────────┘
+│                  Vue 前端                   │
+│ 项目创建 / 批量上传 / 审查进度 / 报告 / 处置 │
+└─────────────────────┬───────────────────────┘
+                      │ HTTPS
+┌─────────────────────▼───────────────────────┐
+│        Cloudflare Pages Functions API       │
+│ 鉴权占位 / 上传会话 / 签名 / 任务编排 / 校验 │
+└───────────────┬───────────────┬─────────────┘
+                │               │
+      ┌─────────▼────────┐ ┌────▼─────────────┐
+      │   Cloudflare R2   │ │ Cloudflare D1    │
+      │ 原件、派生文件     │ │ 元数据、运行、风险 │
+      └─────────┬────────┘ └────▲─────────────┘
+                │ R2 短时 GET URL │ 结果落库
+┌───────────────▼────────────────┴─────────────┐
+│             讯飞星辰 Agent 平台             │
+│ 材料解析工作流 → 领域子工作流 → 聚合工作流   │
+└─────────────────────────────────────────────┘
 ```
 
-建议视觉风格：
+### 4.1 职责边界
 
-* 主色：深蓝色，体现企业级和可信感；
-* 低风险：绿色；
-* 中风险：黄色；
-* 高风险：橙色；
-* 重大风险：红色；
-* 背景使用浅灰色，内容区域采用白色卡片；
-* 避免过度使用科技发光、渐变和大面积动画。
+#### Vue 前端
+
+- 选择和分类材料；
+- 获取上传会话；
+- 直接上传 R2；
+- 显示单文件上传进度、失败重试和完整性提示；
+- 发起审查；
+- 轮询审查进度；
+- 展示风险、证据和处置操作。
+
+#### Pages Functions
+
+- 生成 R2 预签名 URL；
+- 对对象 Key、文件名、MIME、大小和项目归属进行约束；
+- 使用 R2 Binding 校验对象是否存在；
+- 为待审文件生成 R2 短时 GET URL，并准备工作流文件变量；
+- 调用星辰异步 API；
+- 查询、取消和恢复工作流；
+- 验证工作流结果 JSON；
+- 将正式结果写入 D1；
+- 保证模型输出不能绕过业务状态机直接改变正式事实。
+
+#### R2
+
+- 保存不可变原始文件；
+- 保存必要的派生文件，例如标准化 PDF、文本抽取结果或工作流调试样本；
+- 不公开整个 Bucket；
+- 只通过 R2 Binding 或限时签名 URL 访问。
+
+#### D1
+
+- 保存采购项目、文件元数据和材料分类；
+- 保存工作流 `execute_id` 和运行状态；
+- 保存抽取事实、风险、证据引用、处置任务和审计日志；
+- 不保存大文件二进制。
+
+#### 讯飞星辰
+
+- 通过 R2 短时 GET URL 获取待审文件；
+- 调用 OCR、Excel 解析等工具；
+- 执行材料理解、领域审查和聚合；
+- 返回候选事实与候选风险，不直接操作 RiskTrace 数据库。
 
 ---
 
-## 5.2 页面一：风险驾驶舱
+## 5. 文件上传与接入设计
 
-路由：
+## 5.1 为什么采用浏览器直传 R2
 
-```text
-/dashboard
-```
+大文件不经过 Pages Functions，可以减少函数内存占用和请求等待时间，也让前端更容易显示逐文件进度。
 
-### 页面目标
-
-让评委在10秒内理解系统处理什么问题、当前发现了多少风险、重大风险在哪里。
-
-### 页面内容
-
-顶部指标卡：
+### 5.1.1 上传流程
 
 ```text
-今日分析采购事件：26
-发现风险事件：8
-重大风险：2
-待人工复核：5
-已阻止风险付款：¥2,816,400
+1. 前端提交文件清单：名称、大小、MIME、业务分类
+2. API 校验并为每个文件生成 document_id 和 object_key
+3. API 返回预签名 PUT URL
+4. 浏览器使用 PUT 将文件直接上传 R2
+5. 前端调用 complete 接口
+6. API 使用 R2 Binding 执行 HEAD/get 元数据校验
+7. D1 将 document 状态改为 uploaded
 ```
 
-中部左侧展示“采购到付款流程风险分布”：
+### 5.1.2 R2 Object Key
 
 ```text
-合同审查       2
-订单与审批     5
-发票核验       1
-验收核验       3
-付款控制       4
+projects/{projectId}/original/{documentId}/{safeFileName}
+projects/{projectId}/derived/{documentId}/{derivedFileName}
+projects/{projectId}/outputs/{reviewRunId}/{artifactName}
 ```
 
-中部右侧展示高风险事件列表：
+不能直接使用用户文件名作为唯一 Key，避免重名覆盖、路径注入和难以追踪。
 
-```text
-RT-CASE-2026-001
-海岳精密设备采购异常付款事件
-风险分数：92
-状态：待处置
-涉及金额：¥1,331,100
+### 5.1.3 上传会话 API
+
+```http
+POST /api/projects/:projectId/upload-sessions
+Content-Type: application/json
 ```
-
-底部展示最近Agent执行记录：
-
-```text
-10:21 交易核验Agent发现收款账户不一致
-10:21 流程行为Agent发现疑似拆单
-10:22 风险研判Agent生成重大风险事件
-10:22 处置编排Agent建议暂缓付款
-```
-
-### 核心交互
-
-点击“查看风险事件”进入案例详情页。
-
----
-
-## 5.3 页面二：采购事件列表
-
-路由：
-
-```text
-/cases
-```
-
-### 页面内容
-
-筛选条件：
-
-* 事件编号；
-* 供应商；
-* 风险等级；
-* 流程状态；
-* 处置状态；
-* 日期范围。
-
-表格字段：
-
-| 字段   | 说明               |
-| ---- | ---------------- |
-| 事件编号 | RT-CASE-2026-001 |
-| 项目名称 | 工业传感器采购          |
-| 供应商  | 海岳精密设备有限公司       |
-| 合同金额 | ¥1,480,000       |
-| 风险等级 | 重大               |
-| 风险分数 | 92               |
-| 当前阶段 | 付款申请             |
-| 处置状态 | 待复核              |
-| 更新时间 | 2026-07-25 10:22 |
-
-顶部提供两个按钮：
-
-```text
-导入演示案例
-新建分析
-```
-
-“导入演示案例”应当一键写入预设数据，使演示环境可以随时恢复。
-
----
-
-## 5.4 页面三：新建分析任务
-
-路由：
-
-```text
-/cases/new
-```
-
-### 上传区域
-
-按业务类别提供五个卡片：
-
-```text
-合同文件
-采购订单
-发票
-验收材料
-付款申请
-```
-
-另有一个可选区域：
-
-```text
-企业采购管理制度
-```
-
-支持格式：
-
-```text
-PDF、PNG、JPG、CSV、JSON
-```
-
-### MVP实现策略
-
-比赛固定案例使用内置示例文件。上传页面主要用于展示完整产品形态。
-
-用户点击“使用演示数据”后，系统自动填充六份材料，并显示：
-
-```text
-已识别合同：1份
-已识别采购订单：3笔
-已识别发票：1张
-已识别验收报告：1份
-已识别付款申请：1笔
-已加载企业制度：1份
-```
-
-随后点击：
-
-```text
-开始智能分析
-```
-
----
-
-## 5.5 页面四：智能分析过程页
-
-路由：
-
-```text
-/cases/:id/analyzing
-```
-
-这是体现“多智能体协同”的主要页面。
-
-### 页面结构
-
-上方为流程步骤：
-
-```text
-数据解析
-合同义务抽取
-交易一致性核验
-流程行为分析
-证据融合
-处置建议
-```
-
-下方展示六个Agent卡片。
-
-### Agent卡片示例
-
-```text
-交易核验Agent
-状态：分析完成
-耗时：0.8秒
-输入：合同、订单、发票、付款申请
-发现：
-- 实际账户与合同账户不一致
-- 订单总额与发票金额一致
-- 付款比例符合90%约定
-```
-
-### 交互形式
-
-前端依次调用每个Agent步骤接口，每完成一个步骤更新状态：
-
-```text
-等待执行 → 正在分析 → 分析完成
-```
-
-不要仅用固定计时器播放假动画。每个步骤都应在D1中创建真实的`agent_runs`记录，并返回真实结构化结果。
-
----
-
-## 5.6 页面五：风险事件详情页
-
-路由：
-
-```text
-/cases/:id
-```
-
-这是整个MVP最重要的页面。
-
-建议采用三栏布局：
-
-```text
-┌──────────────┬────────────────────┬──────────────────┐
-│ 业务材料      │ 风险证据链          │ 综合研判与处置    │
-│              │                    │                  │
-│ 合同          │ 拆单风险            │ 风险分数：92      │
-│ 订单          │ 账户风险            │ 风险等级：重大    │
-│ 发票          │ 验收风险            │ 建议：暂缓付款    │
-│ 验收          │ 规则依据            │ 操作按钮          │
-│ 付款          │ Agent结论           │                  │
-└──────────────┴────────────────────┴──────────────────┘
-```
-
-### 左侧：业务材料
-
-使用标签页切换：
-
-```text
-合同
-订单
-发票
-验收报告
-付款申请
-企业制度
-```
-
-合同和制度页面应支持高亮证据位置，例如：
-
-```text
-第8.2条：付款账户应为本合同约定账户……
-第9.1条：货物验收合格后支付90%……
-```
-
-订单页面突出显示三笔金额均低于审批阈值。
-
-付款页面同时展示：
-
-```text
-合同账户：****3028
-实际账户：****7619
-```
-
-### 中间：风险证据链
-
-不必引入复杂图谱库，可使用Vue组件和SVG连线实现。
-
-```text
-采购项目
-   │
-   ├── 三笔订单均低于¥500,000
-   │       └── 命中规则：禁止拆单规避审批
-   │
-   ├── 合同账户尾号3028
-   │       └── 实际付款账户尾号7619
-   │
-   └── 付款申请时间：7月25日09:12
-           └── 验收材料上传：7月25日10:04
-                   └── 图片相似度94.7%
-```
-
-每条证据都应支持点击，并跳转到左侧对应材料。
-
-### 右侧：综合研判
-
-展示内容：
-
-```text
-风险等级：重大风险
-风险分数：92
-模型置信度：91%
-建议动作：暂缓付款
-必须人工复核：是
-```
-
-研判摘要下方展示：
-
-* 触发规则；
-* 缺失材料；
-* Agent意见；
-* 推荐操作。
-
-操作按钮：
-
-```text
-暂缓付款
-要求补件
-升级复核
-确认放行
-```
-
-“确认放行”需要填写理由，避免一键绕过风险。
-
----
-
-## 5.7 页面六：处置中心
-
-路由：
-
-```text
-/tasks
-```
-
-展示待处理工单：
-
-```text
-工单：TASK-2026-001
-关联事件：RT-CASE-2026-001
-任务类型：重大风险复核
-建议动作：暂缓付款
-负责人：合规经理
-状态：待处理
-```
-
-工单详情支持：
-
-* 查看证据；
-* 添加处理意见；
-* 要求补充账户变更函；
-* 暂缓付款；
-* 关闭风险；
-* 重新发起评估。
-
----
-
-## 5.8 页面七：规则与学习记录
-
-路由：
-
-```text
-/rules
-/feedback
-```
-
-### 规则中心
-
-MVP展示5至8条规则即可：
-
-```text
-P2P-001：同一项目累计采购金额达到¥500,000时触发高级审批
-P2P-002：禁止将同一采购项目拆分规避审批
-P2P-003：付款账户必须与合同备案账户一致
-P2P-004：付款前必须具备有效验收材料
-P2P-005：首次付款比例不得超过合同金额90%
-```
-
-### 学习记录
-
-展示人工反馈如何进入后续研判：
-
-```text
-AI结论：合同外账户，高风险
-人工结论：风险成立
-处理结果：供应商补充账户变更函后重新审批
-系统更新：案例进入“账户变更”相似案例库
-```
-
-MVP只更新反馈记录、案例标签和统计数据，不需要真正在线训练模型。
-
----
-
-# 六、多智能体设计
-
-## 6.1 智能体不是六个独立服务
-
-在MVP中，六个Agent是六个明确的业务分析模块，由一个编排器统一调用。它们可以运行在同一个Pages Functions项目中，无须部署六套后端。
-
-## 6.2 Agent划分
-
-### 数据感知Agent
-
-职责：
-
-* 识别材料类别；
-* 解析结构化字段；
-* 统一企业名称、金额、日期和账户格式；
-* 建立文档与采购事件的关联。
-
-输出：
 
 ```json
 {
-  "documentType": "contract",
-  "entities": {
-    "contractNo": "HT-2026-0715",
-    "supplierName": "海岳精密设备有限公司",
-    "amount": 1480000,
-    "bankAccountLast4": "3028"
-  }
-}
-```
-
-### 合同义务Agent
-
-职责：
-
-* 抽取付款条件；
-* 抽取验收条件；
-* 抽取质保金比例；
-* 抽取收款账户；
-* 将合同条款转成候选控制规则。
-
-输出：
-
-```json
-{
-  "obligations": [
+  "files": [
     {
-      "type": "PAYMENT_PREREQUISITE",
-      "description": "付款前必须完成验收并取得有效发票",
-      "sourceLocator": "合同第9.1条"
+      "name": "采购合同.pdf",
+      "size": 2483381,
+      "mimeType": "application/pdf",
+      "documentType": "contract"
     }
   ]
 }
 ```
 
-### 交易核验Agent
+```json
+{
+  "data": {
+    "uploads": [
+      {
+        "documentId": "doc_01",
+        "objectKey": "projects/p_01/original/doc_01/采购合同.pdf",
+        "method": "PUT",
+        "uploadUrl": "R2_PRESIGNED_PUT_URL",
+        "expiresAt": "2026-08-03T14:00:00Z",
+        "requiredHeaders": {
+          "Content-Type": "application/pdf"
+        }
+      }
+    ]
+  }
+}
+```
 
-职责：
+### 5.1.4 上传完成确认
 
-* 比较合同、订单、发票和付款金额；
-* 比较供应商主体；
-* 比较银行账户；
-* 计算累计付款比例；
-* 执行五链一致性检查。
+```http
+POST /api/projects/:projectId/documents/:documentId/complete
+```
 
-### 流程行为Agent
+后端检查：
 
-职责：
+- R2 对象存在；
+- 实际大小符合声明；
+- `Content-Type` 符合允许列表；
+- 对象 Key 属于当前项目；
+- 必要时计算或记录 ETag/checksum；
+- 文档状态由 `uploading` 改为 `uploaded`。
 
-* 识别短时间内重复创建订单；
-* 识别拆单规避审批；
-* 识别先付款申请、后补验收；
-* 识别倒签和异常补录；
-* 识别同一用户职责冲突。
+### 5.1.5 R2 CORS 示例
 
-### 风险研判Agent
+```json
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:5173",
+      "https://risktrace.example.com"
+    ],
+    "AllowedMethods": ["PUT", "GET", "HEAD"],
+    "AllowedHeaders": ["Content-Type"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
 
-职责：
-
-* 合并重复风险信号；
-* 计算风险分数；
-* 判断风险等级；
-* 生成有依据的研判摘要；
-* 列出缺失信息。
-
-### 处置编排Agent
-
-职责：
-
-* 根据风险等级匹配处置策略；
-* 创建复核工单；
-* 生成补件清单；
-* 建议暂缓付款或升级审批；
-* 记录所有操作。
+生产配置只能放行真实前端域名，不使用 `*`。
 
 ---
 
-# 七、风险评分设计
+## 6. R2 文件通过 URL 交给星辰工作流
 
-建议使用“规则权重×置信度＋组合加分”的透明算法。
+本方案只采用一条文件接入链路：**R2 短时 GET URL → 星辰文件解析工具**。不调用星辰文件上传接口，也不把文件复制到所谓“星辰目录”。
 
-```text
-基础分 = Σ（风险权重 × 信号置信度）
-```
-
-组合风险额外加分：
+## 6.1 单一路线：R2 短时 GET URL
 
 ```text
-拆单风险 + 账户异常：+10
-账户异常 + 缺少验收：+10
-验收补录 + 图片复用：+10
+R2 私有对象
+→ Pages Functions 生成短时 GET 预签名 URL
+→ URL 作为工作流开始节点参数传入星辰
+→ OCR、Excel 或其他文件解析工具引用该 URL
+→ 工具输出文本、表格数据或结构化 JSON
+→ 后续模型节点和领域 Agent 复用解析结果
 ```
 
-最后限制为：
+该链路的职责边界是：
+
+- RiskTrace 负责保存原件、生成授权 URL、控制有效期和记录文件元数据；
+- 星辰文件解析工具负责通过 URL 获取并解析文件；
+- 大模型节点主要读取解析后的文本或结构化数据，不直接操作 R2，也不依赖文件系统路径；
+- RiskTrace 无需知道星辰平台内部是否缓存文件，也不控制其内部临时存储。
+
+### 6.1.1 URL 生成要求
+
+- URL 仅允许对单个 R2 对象执行 `GET`；
+- 使用 HTTPS，不依赖浏览器 Cookie、登录态或内网网络；
+- 有效期建议 30～60 分钟，必须覆盖工具节点实际获取文件的时间；
+- URL 过期或任务重试时重新签发，不复用旧地址；
+- 不在 D1、日志、前端错误信息或审计记录中保存完整签名 URL；
+- R2 返回正确的 `Content-Type`、文件长度和可下载响应；
+- 开发阶段必须验证星辰服务器可访问 R2 S3 API 域名及带查询参数的签名 URL。
+
+## 6.2 工作流中的 URL 绑定方式
+
+开始节点不保存文件本体，只接收文件清单或文件 URL。推荐继续使用 `materials_json` 传递多文件清单，在迭代节点中逐项处理：
 
 ```text
-riskScore = min(100, 基础分 + 组合加分)
+开始节点：materials_json
+        ↓
+代码/变量提取节点：解析为 materials 数组
+        ↓
+迭代节点：逐个取得 item.file_url
+        ↓
+分支器：依据 mime_type / parse_strategy 路由
+        ├─ PDF、图片 → OCR 工具的 file_url
+        ├─ Excel、CSV → Excel 提取工具的文件变量
+        └─ 文本、JSON → 直接读取派生内容
+        ↓
+统一事实抽取
 ```
 
-风险等级：
+对于 OCR 节点，配置原则为：
 
-|     分数 | 等级   |
-| -----: | ---- |
-|   0—29 | 低风险  |
-|  30—59 | 中风险  |
-|  60—79 | 高风险  |
-| 80—100 | 重大风险 |
+```text
+file_url = 当前迭代项.file_url
+```
 
-每次评分必须保存评分明细，不允许只保存最终分数。
+对于 Excel 工具，应在比赛账号中验证其开始节点文件变量是否可以直接接收 R2 URL。若无法直接消费外部 URL，不改用星辰上传接口，而是由 RiskTrace 后端先生成 CSV、JSON 或文本派生件，再通过新的 R2 短时 URL 或文本参数传入工作流。
+
+## 6.3 比赛版本文件路由策略
+
+| 原文件 | 原件保存 | 进入星辰的内容 | 解析方式 |
+|---|---|---|---|
+| JPG/PNG/WebP | R2 `original/` | 原件的 R2 短时 GET URL | 通用 OCR |
+| PDF | R2 `original/` | 原件的 R2 短时 GET URL | 通用 OCR，必要时按页段处理 |
+| XLS/XLSX/CSV | R2 `original/` | 优先使用原件短时 URL；不兼容时使用后端生成的 CSV/JSON 派生件 URL | Excel 提取工具或代码节点 |
+| DOC/DOCX | R2 `original/` | 后端生成的标准化 PDF URL、纯文本或 Markdown | PDF OCR 或文本事实抽取 |
+| PPT/PPTX | R2 `original/` | 后端生成的标准化 PDF URL | PDF OCR |
+| TXT/MD/JSON | R2 `original/` 或 `derived/` | 短时 URL 或受控文本参数 | 文本读取、代码节点或模型节点 |
+| ZIP | R2 `original/` | 不进入工作流 | 拒绝处理或要求用户解压后上传 |
+
+## 6.4 原件与派生件原则
+
+- 原始文件始终保存在 `original/`；
+- 转换得到的 PDF、文本、CSV 或 JSON 保存在 `derived/`；
+- 派生件仍通过 R2 短时 GET URL 进入星辰，不上传至星辰文件目录；
+- 风险证据必须指回原始文件；
+- 派生件只用于分析，不能覆盖原件；
+- D1 保存原件与派生件之间的 `source_document_id` 关系；
+- 同一文件的 OCR 或表格解析结果只生成一次，供多个 Agent 复用。
 
 ---
 
-# 八、技术架构
+## 7. 多 Agent 工作流设计
 
-## 8.1 总体架构
+## 7.1 推荐架构：解析一次，多维审查
 
-```text
-Vue 3前端
-    │
-    │ 原生Fetch
-    ▼
-Cloudflare Pages Functions
-    │
-    ├── REST API
-    ├── Agent编排器
-    ├── 确定性规则引擎
-    ├── AI模型适配器
-    └── 审计日志模块
-            │
-            ▼
-       Cloudflare D1
-```
-
-Cloudflare Pages Functions根据`functions`目录结构生成文件路由，与你当前的`functions/api/health.ts`模式一致。([Cloudflare Docs][1])
-
-## 8.2 混合智能分析原则
+不要让每个审查 Agent 重复对所有 PDF 做 OCR。推荐拆为三个阶段：
 
 ```text
-确定性问题 → TypeScript规则
-复杂语义问题 → 大模型
-文档字段识别 → OCR或内置演示结果
-风险融合 → 规则评分＋大模型摘要
+阶段 A：材料解析与事实标准化
+        ↓
+阶段 B：多个领域 Agent 基于统一事实包审查
+        ↓
+阶段 C：聚合、冲突消解与付款建议
 ```
 
-适合规则判断的内容：
+### 7.1.1 阶段 A：材料解析工作流
 
-* 金额比较；
-* 日期先后；
-* 账户一致性；
-* 付款比例；
-* 订单累计；
-* 审批阈值；
-* 材料是否缺失。
+职责：
 
-适合大模型判断的内容：
+1. 接收项目和文件清单；
+2. 遍历文件；
+3. 根据类型路由 OCR、Excel 提取或其他解析工具；
+4. 判断材料类型；
+5. 提取主体、金额、日期、账户、条款、数量等候选事实；
+6. 为每个事实记录证据定位；
+7. 输出统一 `material_fact_package`。
 
-* 合同付款条件抽取；
-* 合同义务归纳；
-* 模糊条款风险；
-* 多项风险的自然语言解释；
-* 补件建议生成。
+建议节点：
+
+```text
+开始节点
+→ 变量提取/代码节点：解析 materials_json
+→ 迭代节点：逐文件处理
+    ├─ 分支器：PDF/图片 URL → 通用 OCR
+    ├─ 分支器：Excel/CSV URL → Excel 表格提取工具或代码节点
+    └─ Word/PPT 派生件 URL、文本 → 对应解析节点
+→ 文档分类大模型节点
+→ 事实抽取大模型节点（JSON 输出）
+→ 代码节点：统一字段、补充 document_id
+→ 结束节点
+```
+
+讯飞官方文档说明，迭代节点接收数组并逐项执行子画布；公开文档没有承诺迭代项并行执行，因此方案不将它宣传为并行 OCR。
+
+### 7.1.2 阶段 B：领域审查 Agent
+
+#### Agent 1：材料完整性与采购程序审查
+
+检查：
+
+- 采购申请、预算、供应商准入、询价/招标、评审定标材料是否齐全；
+- 审批日期和采购方式是否合理；
+- 是否存在疑似拆分采购；
+- 单一来源是否有论证；
+- 审批链是否缺失。
+
+#### Agent 2：供应商与合同审查
+
+检查：
+
+- 供应商主体、合同主体、签章和授权是否一致；
+- 合同金额、税率、标的、交付、验收与付款条件；
+- 付款账户与供应商备案账户；
+- 合同变更、补充协议和有效期；
+- 高风险或缺失条款。
+
+#### Agent 3：订单、交付与验收审查
+
+检查：
+
+- 订单是否在合同范围内；
+- 单价、数量和累计金额是否超限；
+- 交付、入库、验收日期是否合理；
+- 验收材料能否证明付款节点已满足；
+- 退货、不合格品或整改是否仍影响付款。
+
+#### Agent 4：发票与付款审查
+
+检查：
+
+- 合同、订单、验收、发票和付款申请金额；
+- 发票主体、税号、品名和税率；
+- 重复发票或重复付款；
+- 累计付款是否超过合同或验收金额；
+- 收款账户是否异常；
+- 预付款、质保金和尾款条件。
+
+#### Agent 5：规则计算 Agent
+
+此 Agent 不应完全依赖大模型。优先由 RiskTrace 后端或星辰代码节点执行确定性计算：
+
+- 金额加总；
+- 日期前后关系；
+- 主体和账户字符串标准化；
+- 数量和单价容差；
+- 累计订单、累计发票、累计付款；
+- 重复编号；
+- 材料清单覆盖率。
+
+### 7.1.3 阶段 C：风险聚合 Agent
+
+输入：
+
+- 统一材料事实包；
+- 各领域 Agent 结果；
+- 确定性规则结果；
+- 适用的企业制度或比赛规则。
+
+职责：
+
+- 合并重复风险；
+- 识别不同 Agent 的冲突结论；
+- 给出风险等级和置信度；
+- 生成付款条件就绪度；
+- 区分“已确认事实”“模型推断”“无法验证”；
+- 输出建议动作，但不直接执行付款操作。
+
+## 7.2 多 Agent 的两种编排方式
+
+### 方式一：星辰总控工作流嵌套子工作流
+
+```text
+总控工作流
+├─ 材料解析子工作流
+├─ 采购程序审查子工作流
+├─ 合同审查子工作流
+├─ 履约验收审查子工作流
+├─ 发票付款审查子工作流
+└─ 聚合子工作流
+```
+
+星辰开发指南明确说明，工作流节点可以集成已发布工作流，通过嵌套实现模块化拆分和多 Agent 协同。
+
+优点：
+
+- 在星辰画布中展示完整流程；
+- 比赛演示直观；
+- 易查看 Trace 日志。
+
+限制：
+
+- 被调用子工作流需要先发布；
+- 子工作流暂不支持流式输出；
+- 复杂嵌套可能超时；
+- 公开文档未保证多个工作流节点真正并行。
+
+### 方式二：RiskTrace 后端扇出多个异步工作流
+
+```text
+材料解析成功
+→ 后端同时创建 4 个领域异步任务
+→ 分别保存 execute_id
+→ 轮询每个任务
+→ 全部完成后创建聚合任务
+```
+
+优点：
+
+- 每个 Agent 状态、失败重试和耗时独立；
+- 更容易做到逻辑并发；
+- 某个 Agent 失败不会丢失其他结果；
+- 前端可展示多 Agent 进度。
+
+限制：
+
+- RiskTrace 后端编排逻辑更多；
+- D1 需要保存多条 `agent_runs`；
+- 需要处理部分成功和聚合触发。
+
+### 7.2.1 比赛 MVP 推荐
+
+采用**混合方式**：
+
+1. 材料解析作为一个独立异步工作流；
+2. 解析完成后，由后端创建 4 个领域审查异步任务；
+3. 所有领域任务完成后，再调用一个聚合工作流；
+4. 每个领域工作流内部可以继续通过工作流节点复用小型子能力。
+
+这样既能展示多 Agent，又避免把所有复杂逻辑堆在一个超长工作流中。
 
 ---
 
-# 九、前端目录设计
+## 8. 工作流输入与输出协议
 
-```text
-src/
-├── api/
-│   ├── request.ts
-│   ├── dashboard.ts
-│   ├── cases.ts
-│   ├── analysis.ts
-│   ├── tasks.ts
-│   └── rules.ts
-├── assets/
-├── components/
-│   ├── common/
-│   │   ├── PageHeader.vue
-│   │   ├── StatusTag.vue
-│   │   └── EmptyState.vue
-│   ├── dashboard/
-│   │   ├── MetricCard.vue
-│   │   └── RiskDistribution.vue
-│   ├── case/
-│   │   ├── CaseSummary.vue
-│   │   ├── DocumentViewer.vue
-│   │   ├── EvidenceChain.vue
-│   │   └── RiskDecisionPanel.vue
-│   ├── agent/
-│   │   ├── AgentStepCard.vue
-│   │   └── AgentTimeline.vue
-│   └── task/
-│       └── DispositionDialog.vue
-├── layouts/
-│   └── AppLayout.vue
-├── router/
-│   └── index.ts
-├── stores/
-│   ├── app.ts
-│   ├── case.ts
-│   └── analysis.ts
-├── types/
-│   ├── api.ts
-│   ├── case.ts
-│   ├── risk.ts
-│   └── agent.ts
-├── views/
-│   ├── DashboardView.vue
-│   ├── CaseListView.vue
-│   ├── CaseCreateView.vue
-│   ├── CaseAnalyzingView.vue
-│   ├── CaseDetailView.vue
-│   ├── TaskCenterView.vue
-│   ├── RuleCenterView.vue
-│   └── FeedbackView.vue
-├── App.vue
-└── main.ts
+## 8.1 总控输入
+
+星辰异步 API 的 `parameters` 必须与工作流开始节点参数一致。
+
+建议开始节点参数：
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `AGENT_USER_INPUT` | String | 固定任务描述，例如“执行采购付款前合规审查” |
+| `project_id` | String | RiskTrace 采购项目 ID |
+| `review_run_id` | String | 本次审查运行 ID |
+| `materials_json` | String | 文件清单 JSON 字符串 |
+| `policy_context` | String | 当前适用规则摘要或制度条款 |
+| `analysis_mode` | String | `demo` / `strict` |
+
+`materials_json` 示例：
+
+```json
+[
+  {
+    "document_id": "doc_contract_01",
+    "document_type": "contract",
+    "file_name": "采购合同.pdf",
+    "mime_type": "application/pdf",
+    "access_mode": "presigned_url",
+    "file_url": "TEMPORARY_URL",
+    "source_object_key": "projects/p01/original/doc_contract_01/采购合同.pdf"
+  },
+  {
+    "document_id": "doc_invoice_01",
+    "document_type": "invoice",
+    "file_name": "发票.xlsx",
+    "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "access_mode": "presigned_url",
+    "file_url": "R2_TEMPORARY_GET_URL",
+    "parse_strategy": "excel"
+  }
+]
 ```
 
-## 9.1 前端路由
+注意：
+
+- `source_object_key` 只用于 RiskTrace 内部追踪，不能让 Agent 直接访问；
+- 临时签名 URL 不写入长期日志；
+- 任务重试时重新生成 URL；
+- 每个文件均使用独立短时 URL；开始节点原生多文件变量通过 PoC 后可替代 `materials_json`，但仍不上传文件到星辰。
+
+## 8.2 异步创建请求
+
+```http
+POST https://xingchen-api.xf-yun.com/workflow/v1/async/chat/completions
+Authorization: Bearer {API_KEY}:{API_SECRET}
+Content-Type: application/json
+```
+
+```json
+{
+  "flow_id": "XFYUN_FLOW_ID",
+  "uid": "risktrace-demo",
+  "chat_id": "review_run_01",
+  "parameters": {
+    "AGENT_USER_INPUT": "执行企业采购项目付款前合规审查",
+    "project_id": "project_01",
+    "review_run_id": "review_run_01",
+    "materials_json": "[...]",
+    "analysis_mode": "demo"
+  }
+}
+```
+
+成功后保存：
+
+```json
+{
+  "data": {
+    "execute_id": "1763712632"
+  }
+}
+```
+
+## 8.3 状态查询
+
+```http
+POST https://xingchen-api.xf-yun.com/workflow/v1/async/chat/result
+```
+
+```json
+{
+  "execute_id": "1763712632"
+}
+```
+
+官方状态包括 `Running`、`Success`、`Interrupt`。RiskTrace 内部转换为稳定状态：
+
+```text
+queued
+preparing_files
+running
+needs_input
+aggregating
+succeeded
+failed
+canceled
+```
+
+## 8.4 标准化输出 JSON
+
+工作流最终回答内容必须只输出 JSON，不添加 Markdown 代码围栏和额外解释。
+
+```json
+{
+  "schema_version": "1.0",
+  "project_id": "project_01",
+  "review_run_id": "review_run_01",
+  "summary": {
+    "overall_risk_level": "critical",
+    "payment_readiness": "blocked",
+    "conclusion": "当前不具备付款条件",
+    "confirmed_risk_count": 3,
+    "needs_review_count": 1
+  },
+  "material_completeness": {
+    "score": 82,
+    "missing_documents": [
+      {
+        "document_type": "final_acceptance_report",
+        "reason": "合同要求稳定运行30天后验收，但当前仅有到货确认"
+      }
+    ]
+  },
+  "readiness_checks": [
+    {
+      "code": "PAYEE_ACCOUNT_MATCH",
+      "name": "收款账户一致性",
+      "status": "failed",
+      "summary": "付款申请账户与供应商备案账户不一致"
+    }
+  ],
+  "risks": [
+    {
+      "risk_key": "payee_account_mismatch",
+      "title": "收款账户与备案账户不一致",
+      "severity": "critical",
+      "confidence": 0.98,
+      "status": "candidate",
+      "dimension": "payment",
+      "rule_code": "PAY-ACCOUNT-001",
+      "expected_fact": "付款账户应与供应商备案账户或有效变更文件一致",
+      "actual_fact": "付款申请使用新账户，未发现有效变更审批",
+      "impact_amount_cent": 86000000,
+      "evidence": [
+        {
+          "document_id": "doc_supplier_01",
+          "file_name": "供应商准入表.pdf",
+          "locator": {
+            "page": 2,
+            "quote": "开户银行……账号……"
+          }
+        },
+        {
+          "document_id": "doc_payment_01",
+          "file_name": "付款申请单.pdf",
+          "locator": {
+            "page": 1,
+            "quote": "收款账号……"
+          }
+        }
+      ],
+      "recommendation": "暂缓付款，要求提交盖章账户变更函并执行双人复核"
+    }
+  ],
+  "limitations": [
+    "未接入真实银行账户验证接口",
+    "发票真伪为演示数据，未调用税务查验服务"
+  ],
+  "suggested_actions": [
+    {
+      "action": "hold_payment",
+      "priority": 1,
+      "reason": "存在重大收款账户异常"
+    },
+    {
+      "action": "request_documents",
+      "priority": 2,
+      "reason": "缺少满足付款节点的最终验收证明"
+    }
+  ]
+}
+```
+
+## 8.5 后端结果校验
+
+工作流结果不能直接写入正式风险表。Pages Functions 必须执行：
+
+1. 去除可能的 Markdown 代码围栏；
+2. JSON 解析；
+3. Schema 校验；
+4. `project_id`、`review_run_id` 一致性校验；
+5. 严重程度、状态、动作的枚举校验；
+6. `document_id` 必须属于当前项目；
+7. 金额使用整数分；
+8. 证据不存在时不得标记为“已确认”；
+9. 原始响应保存在独立调试字段或 R2 输出对象中；
+10. 通过校验后再写入 `risk_items` 和 `evidence_refs`。
+
+---
+
+## 9. RiskTrace 后端 API
+
+### 9.1 项目与文件
+
+```text
+POST   /api/projects
+GET    /api/projects
+GET    /api/projects/:projectId
+POST   /api/projects/:projectId/upload-sessions
+POST   /api/projects/:projectId/documents/:documentId/complete
+DELETE /api/projects/:projectId/documents/:documentId
+GET    /api/projects/:projectId/documents
+```
+
+### 9.2 审查运行
+
+```text
+POST   /api/projects/:projectId/reviews
+GET    /api/reviews/:reviewRunId
+POST   /api/reviews/:reviewRunId/cancel
+POST   /api/reviews/:reviewRunId/retry
+POST   /api/reviews/:reviewRunId/resume
+GET    /api/reviews/:reviewRunId/agent-runs
+```
+
+### 9.3 风险与处置
+
+```text
+GET    /api/projects/:projectId/risks
+GET    /api/risks/:riskId
+POST   /api/risks/:riskId/confirm
+POST   /api/risks/:riskId/dismiss
+POST   /api/risks/:riskId/actions
+GET    /api/projects/:projectId/audit-logs
+```
+
+## 9.4 发起审查接口
+
+```http
+POST /api/projects/:projectId/reviews
+```
+
+后端处理：
+
+1. 检查项目不存在正在运行的审查；
+2. 检查至少存在一份可处理材料；
+3. 创建 `review_runs`；
+4. 为每份待审原件或派生件生成 R2 短时 GET URL；
+5. 创建材料解析异步任务；
+6. 保存星辰 `execute_id`；
+7. 返回 HTTP 202。
+
+```json
+{
+  "data": {
+    "reviewRunId": "review_run_01",
+    "status": "preparing_files",
+    "pollUrl": "/api/reviews/review_run_01"
+  }
+}
+```
+
+## 9.5 轮询策略
+
+前端建议：
+
+- 前 30 秒每 2 秒查询一次；
+- 30 秒后每 5 秒查询一次；
+- 页面隐藏时降低频率；
+- 任务完成、失败或取消后停止；
+- 不直接请求星辰 API，所有查询经过 RiskTrace 后端。
+
+因为 Pages Functions 不会在请求结束后自动持续运行整个编排，比赛 MVP 采用“前端轮询驱动状态刷新”。当查询接口发现某阶段刚完成时，可以在同一次请求中创建下一阶段异步任务并更新 D1。
+
+---
+
+## 10. D1 数据模型
+
+### 10.1 核心表
+
+```text
+projects
+project_documents
+review_runs
+agent_runs
+extracted_facts
+risk_items
+evidence_refs
+action_tasks
+audit_logs
+```
+
+### 10.2 `project_documents`
+
+| 字段 | 说明 |
+|---|---|
+| `id` | document ID |
+| `project_id` | 所属项目 |
+| `document_type` | 合同、订单、发票等 |
+| `original_name` | 原始文件名 |
+| `mime_type` | MIME |
+| `size_bytes` | 文件大小 |
+| `r2_object_key` | 原件 Key |
+| `derived_object_key` | 可选派生件 Key |
+| `checksum` | 校验值或 ETag |
+| `status` | uploading/uploaded/ready/failed |
+| `parse_status` | pending/running/succeeded/failed |
+| `created_at` | 创建时间 |
+
+### 10.3 `review_runs`
+
+| 字段 | 说明 |
+|---|---|
+| `id` | 审查运行 ID |
+| `project_id` | 项目 ID |
+| `status` | 内部统一状态 |
+| `stage` | parsing/reviewing/aggregating |
+| `overall_risk_level` | 最终风险等级 |
+| `payment_readiness` | ready/conditional/blocked |
+| `started_at` | 开始时间 |
+| `finished_at` | 完成时间 |
+| `error_code` | 错误码 |
+| `error_message` | 脱敏错误信息 |
+
+### 10.4 `agent_runs`
+
+| 字段 | 说明 |
+|---|---|
+| `id` | 子任务 ID |
+| `review_run_id` | 主审查运行 |
+| `agent_type` | parser/procedure/contract/acceptance/payment/aggregator |
+| `provider` | xfyun |
+| `flow_id` | 星辰 flow ID |
+| `execute_id` | 星辰异步执行 ID |
+| `status` | queued/running/succeeded/failed/interrupt/canceled |
+| `input_manifest_hash` | 输入清单摘要 |
+| `raw_output_object_key` | 原始输出保存位置 |
+| `token_usage` | Token 使用信息 |
+| `started_at` | 开始时间 |
+| `finished_at` | 完成时间 |
+
+---
+
+## 11. 前端交互设计
+
+## 11.1 新建项目与批量上传
+
+前端采用三步向导：
+
+### 第一步：项目基本信息
+
+- 项目名称；
+- 采购类型：货物/服务/工程；
+- 采购金额；
+- 采购部门；
+- 当前阶段：待付款审查。
+
+### 第二步：材料批量上传
+
+按业务分类展示拖拽区：
+
+```text
+采购需求与预算
+供应商资料
+寻源与定标
+合同与补充协议
+订单
+交付与验收
+发票
+付款申请
+其他材料
+```
+
+操作友好性要求：
+
+- 支持一次多选和整个批次上传；
+- 自动根据文件名给出材料类型建议；
+- 用户可以拖动修改分类；
+- 显示每个文件的上传、校验、解析状态；
+- 单文件失败不影响其他文件；
+- 支持失败重试和删除重传；
+- 不要求用户在上传前手动将材料整理成固定数量。
+
+### 第三步：材料检查与发起审查
+
+显示：
+
+- 已上传材料数量；
+- 系统识别的材料类型；
+- 关键材料缺失提醒；
+- “仍然发起审查”入口；
+- “补充材料”入口。
+
+## 11.2 多 Agent 进度
+
+```text
+✓ 材料归集完成
+✓ PDF/图片 OCR 完成
+✓ Excel 数据提取完成
+● 采购程序审查中
+● 合同审查中
+● 履约验收审查中
+● 发票付款审查中
+○ 风险聚合待开始
+```
+
+每个 Agent 展示：状态、开始时间、耗时、发现候选问题数和失败重试入口。不要展示模型私有思维链，展示“处理摘要”和 Trace 状态即可。
+
+## 11.3 合规审查报告
+
+首页先展示“付款条件就绪度”：
+
+| 审查项 | 状态 |
+|---|---|
+| 采购需求与预算 | 通过 |
+| 供应商准入 | 通过 |
+| 采购程序 | 存疑 |
+| 合同有效性 | 通过 |
+| 订单与合同匹配 | 通过 |
+| 交付与验收 | 材料不足 |
+| 发票一致性 | 通过 |
+| 收款账户一致性 | 重大异常 |
+| 累计付款控制 | 通过 |
+| 最终建议 | 暂缓付款 |
+
+风险详情必须展示：
+
+- 风险标题；
+- 严重程度；
+- 已确认/待复核；
+- 触发规则；
+- 预期事实与实际事实；
+- 涉及金额；
+- 文件名、页码、单元格或原文；
+- 建议动作；
+- 人工确认和驳回入口。
+
+## 11.4 处置动作
+
+比赛版本至少实现：
+
+- 暂缓付款；
+- 发起补件；
+- 指派人工复核；
+- 驳回误报；
+- 标记有条件付款；
+- 查看操作日志。
+
+每个处置动作必须填写理由，并写入 `audit_logs`。
+
+---
+
+## 12. 异常与容错
+
+### 12.1 文件异常
+
+- 文件上传失败：只重试该文件；
+- 文件类型不支持：保留原件，标记为 `unsupported`；
+- OCR 超时：按页拆分或提示减少页数；
+- Excel 多 Sheet：先列出 Sheet，再按配置提取；若工具不能直接消费 R2 URL，则由后端生成 CSV/JSON 派生件；
+- 文件 URL 过期：重新签发并重试对应 Agent；
+- 星辰无法访问文件 URL：检查 R2 签名、有效期、域名和响应头，重新签发后仅重试对应文件。
+
+讯飞 FAQ 提到 OCR 页数过多、页面复杂时容易超时，单独调用工具大约在数十页规模内更稳妥。比赛样例应控制单文件页数，长 PDF 可以按页段处理。
+
+### 12.2 工作流异常
+
+- 创建任务失败：最多自动重试 2 次；
+- `Running`：继续轮询；
+- `Interrupt`：RiskTrace 映射为 `needs_input`，前端展示需要补充的信息；
+- 子 Agent 部分失败：允许其他 Agent 继续，并由聚合 Agent 标注分析限制；
+- JSON 不合法：执行一次格式修复工作流或失败重试；
+- `flow_id` 未发布或版本过旧：后台显示配置错误，不向用户展示密钥细节；
+- 取消任务：调用星辰取消接口，并同步 D1 状态。
+
+### 12.3 工作流节点异常配置
+
+对 OCR、Excel 工具、大模型、代码、变量提取器和子工作流节点配置：
+
+- 超时时间；
+- 重试次数；
+- 异常流程；
+- 兜底输出；
+- 节点注释。
+
+---
+
+## 13. 安全与隐私最低要求
+
+### 13.1 Secret
+
+以下内容只保存为 Cloudflare Secret：
+
+```text
+XFYUN_API_KEY
+XFYUN_API_SECRET
+XFYUN_FLOW_ID_*
+R2_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY
+CLOUDFLARE_ACCOUNT_ID
+```
+
+前端永远不能获得这些值。
+
+### 13.2 文件访问
+
+- R2 Bucket 保持私有；
+- 上传 PUT URL 建议 10～15 分钟有效；
+- 分析 GET URL 建议 30～60 分钟有效；
+- URL 仅授权单个对象和单一操作；
+- 不在 D1、前端错误信息、控制台和审计日志中保存完整签名 URL；
+- 审查结束后不需要主动删除原件，但比赛数据应提供一键清除功能。
+
+### 13.3 日志脱敏
+
+禁止记录：
+
+- 完整银行账号；
+- 身份证号；
+- 合同全文；
+- R2 签名 URL；
+- 星辰 API Key/Secret；
+- 工作流返回的私有推理内容。
+
+### 13.4 AI 输出边界
+
+- AI 输出是候选事实和候选风险；
+- 付款状态只能由用户处置动作或确定性业务规则更新；
+- 风险没有证据时必须标记为待复核；
+- 前端不得展示或依赖 `reasoning_content` 作为审计依据；
+- 最终报告展示可复核的事实摘要，不展示模型内部思维链。
+
+---
+
+## 14. Cloudflare 配置建议
+
+### 14.1 `wrangler.jsonc`
+
+```jsonc
+{
+  "name": "risktrace",
+  "compatibility_date": "2026-08-03",
+  "pages_build_output_dir": "./dist",
+  "r2_buckets": [
+    {
+      "binding": "PROCUREMENT_FILES",
+      "bucket_name": "risktrace-procurement-files"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "risktrace-db",
+      "database_id": "REPLACE_WITH_DATABASE_ID"
+    }
+  ]
+}
+```
+
+R2 预签名所需 S3 API 凭证和讯飞凭证通过 Cloudflare Dashboard 的 Variables and Secrets 配置，不写入仓库。
+
+### 14.2 环境类型
 
 ```ts
-/dashboard
-/cases
-/cases/new
-/cases/:id
-/cases/:id/analyzing
-/tasks
-/rules
-/feedback
-```
-
-`App.vue`只保留：
-
-```vue
-<template>
-  <RouterView />
-</template>
-```
-
----
-
-# 十、后端Functions目录设计
-
-```text
-functions/
-├── _shared/
-│   ├── db.ts
-│   ├── response.ts
-│   ├── validation.ts
-│   ├── audit.ts
-│   ├── risk-score.ts
-│   ├── seed-case.ts
-│   └── ai/
-│       ├── provider.ts
-│       ├── prompts.ts
-│       └── validators.ts
-├── api/
-│   ├── health.ts
-│   ├── dashboard.ts
-│   ├── demo/
-│   │   └── seed.ts
-│   ├── cases/
-│   │   ├── index.ts
-│   │   └── [id]/
-│   │       ├── index.ts
-│   │       ├── documents.ts
-│   │       ├── risks.ts
-│   │       ├── actions.ts
-│   │       └── analysis-runs.ts
-│   ├── analysis-runs/
-│   │   └── [runId]/
-│   │       ├── index.ts
-│   │       └── steps/
-│   │           └── [stepKey].ts
-│   ├── tasks/
-│   │   ├── index.ts
-│   │   └── [id].ts
-│   ├── rules/
-│   │   └── index.ts
-│   └── feedback/
-│       └── index.ts
-├── env.d.ts
-└── types.d.ts
-```
-
----
-
-# 十一、REST API设计
-
-## 11.1 仪表盘
-
-```text
-GET /api/dashboard
-```
-
-返回指标、风险分布、重大风险列表和最近Agent活动。
-
-## 11.2 案例管理
-
-```text
-GET  /api/cases
-POST /api/cases
-GET  /api/cases/:id
-```
-
-## 11.3 导入演示案例
-
-```text
-POST /api/demo/seed
-```
-
-作用：
-
-* 清理旧演示数据；
-* 创建固定案例；
-* 创建合同、订单、发票、验收和付款记录；
-* 写入基础规则；
-* 返回案例ID。
-
-## 11.4 分析任务
-
-```text
-POST /api/cases/:id/analysis-runs
-GET  /api/analysis-runs/:runId
-POST /api/analysis-runs/:runId/steps/:stepKey
-```
-
-步骤键：
-
-```text
-ingestion
-contract-obligation
-transaction-match
-process-behavior
-risk-fusion
-disposition
-```
-
-前端依次执行步骤接口，可以稳定展示真实Agent进度。
-
-## 11.5 风险处置
-
-```text
-POST /api/cases/:id/actions
-```
-
-请求示例：
-
-```json
-{
-  "actionType": "HOLD_PAYMENT",
-  "comment": "收款账户与合同不一致，暂缓付款并要求供应商补充账户变更函。"
-}
-```
-
-## 11.6 反馈
-
-```text
-POST /api/feedback
-```
-
-请求示例：
-
-```json
-{
-  "riskEventId": "risk-event-id",
-  "decision": "CONFIRMED",
-  "reason": "供应商账户变更未经过重新审批",
-  "resolution": "补充账户变更函并重新发起审批"
+interface Env {
+  DB: D1Database
+  PROCUREMENT_FILES: R2Bucket
+  XFYUN_API_KEY: string
+  XFYUN_API_SECRET: string
+  XFYUN_FLOW_ID_PARSER: string
+  XFYUN_FLOW_ID_PROCEDURE: string
+  XFYUN_FLOW_ID_CONTRACT: string
+  XFYUN_FLOW_ID_ACCEPTANCE: string
+  XFYUN_FLOW_ID_PAYMENT: string
+  XFYUN_FLOW_ID_AGGREGATOR: string
+  R2_ACCESS_KEY_ID: string
+  R2_SECRET_ACCESS_KEY: string
+  CLOUDFLARE_ACCOUNT_ID: string
+  R2_BUCKET_NAME: string
 }
 ```
 
 ---
 
-# 十二、D1数据库设计
+## 15. Provider 抽象
 
-当前项目已经在`wrangler.jsonc`中配置了`risktrace_db`绑定；Pages Functions可以通过`context.env.risktrace_db`访问D1。([GitHub][2])
-
-## 12.1 cases
-
-```sql
-CREATE TABLE cases (
-  id TEXT PRIMARY KEY,
-  case_no TEXT NOT NULL UNIQUE,
-  title TEXT NOT NULL,
-  project_name TEXT,
-  supplier_name TEXT,
-  contract_amount INTEGER NOT NULL DEFAULT 0,
-  payment_amount INTEGER NOT NULL DEFAULT 0,
-  stage TEXT NOT NULL,
-  risk_level TEXT NOT NULL DEFAULT 'pending',
-  risk_score INTEGER NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'draft',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-```
-
-金额统一使用“分”为单位存储，避免浮点误差。
-
-## 12.2 documents
-
-```sql
-CREATE TABLE documents (
-  id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL,
-  document_type TEXT NOT NULL,
-  file_name TEXT NOT NULL,
-  asset_url TEXT,
-  mime_type TEXT,
-  file_hash TEXT,
-  extracted_text TEXT,
-  structured_data TEXT,
-  uploaded_at TEXT NOT NULL,
-  FOREIGN KEY (case_id) REFERENCES cases(id)
-);
-```
-
-`structured_data`使用JSON字符串保存演示阶段的结构化识别结果。
-
-## 12.3 transactions
-
-```sql
-CREATE TABLE transactions (
-  id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL,
-  transaction_type TEXT NOT NULL,
-  business_no TEXT,
-  amount INTEGER,
-  supplier_name TEXT,
-  bank_account_last4 TEXT,
-  business_date TEXT,
-  operator_name TEXT,
-  raw_data TEXT,
-  FOREIGN KEY (case_id) REFERENCES cases(id)
-);
-```
-
-## 12.4 rules
-
-```sql
-CREATE TABLE rules (
-  id TEXT PRIMARY KEY,
-  rule_code TEXT NOT NULL UNIQUE,
-  name TEXT NOT NULL,
-  category TEXT NOT NULL,
-  description TEXT NOT NULL,
-  severity TEXT NOT NULL,
-  weight INTEGER NOT NULL,
-  enabled INTEGER NOT NULL DEFAULT 1,
-  configuration TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-```
-
-## 12.5 risk_signals
-
-```sql
-CREATE TABLE risk_signals (
-  id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL,
-  rule_id TEXT,
-  signal_type TEXT NOT NULL,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL,
-  confidence REAL NOT NULL,
-  weight INTEGER NOT NULL,
-  score REAL NOT NULL,
-  source_data TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (case_id) REFERENCES cases(id)
-);
-```
-
-## 12.6 risk_events
-
-```sql
-CREATE TABLE risk_events (
-  id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL,
-  title TEXT NOT NULL,
-  summary TEXT NOT NULL,
-  risk_level TEXT NOT NULL,
-  risk_score INTEGER NOT NULL,
-  confidence REAL NOT NULL,
-  recommended_actions TEXT NOT NULL,
-  review_required INTEGER NOT NULL,
-  status TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (case_id) REFERENCES cases(id)
-);
-```
-
-## 12.7 evidence_links
-
-```sql
-CREATE TABLE evidence_links (
-  id TEXT PRIMARY KEY,
-  risk_event_id TEXT NOT NULL,
-  risk_signal_id TEXT,
-  document_id TEXT,
-  evidence_type TEXT NOT NULL,
-  label TEXT NOT NULL,
-  source_locator TEXT,
-  evidence_value TEXT,
-  created_at TEXT NOT NULL
-);
-```
-
-## 12.8 agent_runs
-
-```sql
-CREATE TABLE agent_runs (
-  id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL,
-  run_id TEXT NOT NULL,
-  agent_key TEXT NOT NULL,
-  agent_name TEXT NOT NULL,
-  status TEXT NOT NULL,
-  input_summary TEXT,
-  output_data TEXT,
-  error_message TEXT,
-  started_at TEXT,
-  completed_at TEXT
-);
-```
-
-## 12.9 actions
-
-```sql
-CREATE TABLE actions (
-  id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL,
-  risk_event_id TEXT,
-  action_type TEXT NOT NULL,
-  action_status TEXT NOT NULL,
-  operator_name TEXT NOT NULL,
-  comment TEXT,
-  created_at TEXT NOT NULL
-);
-```
-
-## 12.10 audit_logs
-
-```sql
-CREATE TABLE audit_logs (
-  id TEXT PRIMARY KEY,
-  case_id TEXT,
-  actor_type TEXT NOT NULL,
-  actor_name TEXT NOT NULL,
-  action TEXT NOT NULL,
-  target_type TEXT,
-  target_id TEXT,
-  detail TEXT,
-  created_at TEXT NOT NULL
-);
-```
-
-建议为以下字段建立索引：
-
-```sql
-CREATE INDEX idx_cases_risk_level ON cases(risk_level);
-CREATE INDEX idx_cases_status ON cases(status);
-CREATE INDEX idx_documents_case_id ON documents(case_id);
-CREATE INDEX idx_transactions_case_id ON transactions(case_id);
-CREATE INDEX idx_risk_signals_case_id ON risk_signals(case_id);
-CREATE INDEX idx_agent_runs_run_id ON agent_runs(run_id);
-CREATE INDEX idx_audit_logs_case_id ON audit_logs(case_id);
-```
-
----
-
-# 十三、文件存储策略
-
-当前技术栈只有D1，没有R2。
-
-MVP阶段建议：
-
-* 演示合同、发票和验收报告放在`public/demo/RT-CASE-2026-001/`；
-* D1只存文件地址、哈希、解析文本和结构化结果；
-* 用户临时上传的文件只在当前请求中处理，不把二进制内容写入D1；
-* 限制单文件不超过10MB；
-* 生产版再增加Cloudflare R2保存原始文件。
-
-R2是Cloudflare面向非结构化对象的存储能力，比把PDF和图片二进制直接写进D1更符合职责划分。Workers运行时内存为128MB，官方也建议避免将大文件完整缓冲进内存，因此上传接口应检查文件大小并尽量流式处理。([Cloudflare Docs][3])
-
----
-
-# 十四、AI接口设计
-
-## 14.1 环境变量
-
-`.dev.vars`：
-
-```text
-APP_ENV=development
-DEMO_MODE=true
-AI_PROVIDER=fixture
-AI_API_BASE=
-AI_API_KEY=
-AI_MODEL=
-```
-
-Cloudflare生产环境使用Secrets：
-
-```bash
-wrangler pages secret put AI_API_KEY
-```
-
-## 14.2 Provider适配层
+业务层不直接调用讯飞字段，统一通过 Provider：
 
 ```ts
-interface AiProvider {
-  extractContractObligations(input: ContractInput): Promise<ContractOutput>
-  generateRiskSummary(input: RiskSummaryInput): Promise<RiskSummaryOutput>
-  generateDisposition(input: DispositionInput): Promise<DispositionOutput>
+interface ReviewProvider {
+  prepareFileUrls(input: PrepareFileUrlsInput): Promise<PreparedFileUrl[]>
+  createRun(input: CreateAgentRunInput): Promise<ProviderRun>
+  getRun(executeId: string): Promise<ProviderRunResult>
+  cancelRun(executeId: string): Promise<void>
+  resumeRun(input: ResumeAgentRunInput): Promise<ProviderRun>
 }
 ```
 
-提供两种实现：
-
-```text
-FixtureAiProvider
-RemoteAiProvider
-```
-
-### FixtureAiProvider
-
-读取内置JSON结果，保证：
-
-* 没有API密钥也能演示；
-* 网络不稳定时不会中断；
-* 每次演示结果一致；
-* 可以完整展示Agent协同逻辑。
-
-### RemoteAiProvider
-
-使用原生`fetch`调用实际大模型接口。
-
-比赛演示可在界面右上角显示：
-
-```text
-AI模式：实时模型
-AI模式：稳定演示
-```
-
-不要在路演时隐瞒演示数据和预设结果。可以说明：
-
-> 为保证现场稳定，系统支持实时模型与可复现演示两种运行模式，二者使用同一结构化输出协议。
-
-## 14.3 输出约束
-
-所有AI输出必须是结构化JSON，并经过字段校验。
-
-错误时不得直接展示模型原始文本，应回退到：
-
-* 确定性规则结论；
-* 内置演示结果；
-* 人工复核状态。
-
----
-
-# 十五、系统稳定性设计
-
-## 15.1 一键重置
-
-页面顶部增加：
-
-```text
-重置演示数据
-```
-
-调用：
-
-```text
-POST /api/demo/seed?reset=true
-```
-
-确保每次演示前都恢复到相同状态。
-
-## 15.2 双模式运行
-
-```text
-实时分析模式
-稳定演示模式
-```
-
-稳定演示模式使用预置OCR和模型输出，但规则匹配、数据库写入、风险计算、工单创建和审计日志必须真实执行。
-
-## 15.3 错误降级
-
-外部模型失败时：
-
-```text
-模型调用失败
-→ 保存错误日志
-→ 使用确定性风险信号
-→ 风险状态标记为“需人工复核”
-→ 页面继续运行
-```
-
-## 15.4 接口统一响应
-
-沿用现有`request.ts`协议：
-
-成功：
-
-```json
-{
-  "success": true,
-  "data": {}
+```ts
+interface PreparedFileUrl {
+  documentId: string
+  sourceDocumentId?: string
+  fileName: string
+  mimeType: string
+  fileUrl: string
+  accessMode: 'presigned_url'
+  parseStrategy: 'ocr' | 'excel' | 'text' | 'json'
+  expiresAt: string
 }
 ```
 
-失败：
-
-```json
-{
-  "success": false,
-  "code": "CASE_NOT_FOUND",
-  "message": "未找到采购事件"
-}
-```
+Provider 只负责生成、刷新和校验 R2 短时 URL，以及标记对应解析策略；不实现文件转传或星辰目录上传。
 
 ---
 
-# 十六、比赛现场演示脚本
+## 16. 比赛黄金演示案例
 
-## 第一幕：风险总览
+项目：**海岳精密设备采购异常付款**
 
-打开风险驾驶舱：
+准备材料：
 
-> RiskTrace持续监控采购到付款全过程。当前系统发现两项重大风险，其中海岳精密设备采购项目涉及一笔133.11万元的待付款申请。
+1. 采购申请单；
+2. 预算审批单；
+3. 供应商准入表；
+4. 三家供应商报价；
+5. 比价和定标审批；
+6. 采购合同；
+7. 采购订单；
+8. 送货单和普通验收单；
+9. 发票；
+10. 付款申请和账户变更函。
 
-点击该风险事件。
+埋入风险：
 
-## 第二幕：展示业务材料
+- 48 小时内拆分两笔订单，疑似规避采购门槛；
+- 合同及供应商档案为账户 A，付款申请改为账户 B；
+- 合同要求安装调试并稳定运行 30 天，现有材料只能证明到货；
+- 发票或付款申请金额超过当前累计验收金额。
 
-> 这笔付款表面上金额、发票和供应商名称均正常，传统三单匹配可能允许其继续付款。但RiskTrace将合同、三笔订单、发票、验收材料和付款记录组织成统一采购事件。
-
-展示左侧五类材料。
-
-## 第三幕：启动多智能体分析
-
-点击“重新智能分析”。
-
-依次展示：
-
-* 合同义务Agent识别付款条件；
-* 交易核验Agent发现账户不一致；
-* 流程行为Agent发现三笔订单疑似拆单；
-* 验收核验发现事后补录与图片复用；
-* 风险研判Agent生成92分重大风险。
-
-## 第四幕：展示证据链
-
-> 系统不是简单输出一个大模型结论。每项风险都能定位到合同条款、订单字段、付款账户和操作时间。
-
-依次点击证据节点，左侧定位到对应材料。
-
-## 第五幕：执行处置
-
-点击：
+演示步骤：
 
 ```text
-暂缓付款
+1. 新建项目
+2. 一次性选择全部材料并上传
+3. 查看材料自动分类和缺失提示
+4. 点击发起审查
+5. 展示材料解析和多个 Agent 进度
+6. 查看付款条件就绪度
+7. 打开收款账户重大风险
+8. 对比供应商准入表、合同和付款申请中的账户证据
+9. 点击“暂缓付款”
+10. 发起补件并指派复核人
+11. 查看审计日志和总览指标变化
 ```
-
-填写：
-
-```text
-收款账户与合同备案账户不一致，且验收材料存在事后补录迹象。暂缓付款并要求供应商补充账户变更函及有效验收证明。
-```
-
-系统自动：
-
-* 更新付款状态；
-* 创建合规复核工单；
-* 生成补件清单；
-* 写入审计日志。
-
-## 第六幕：持续学习
-
-进入反馈记录：
-
-> 合规人员的最终判断会进入案例库，用于调整后续同类风险的判断阈值和处置建议，但规则变更仍需人工审批，不让AI自行修改企业合规政策。
 
 ---
 
-# 十七、开发优先级
+## 17. 开发顺序
 
-## P0：必须完成
+### 阶段 1：文件链路 PoC
 
-* 全局后台布局；
-* 风险驾驶舱；
-* 案例列表；
-* 一键导入演示数据；
-* 多Agent分析过程；
-* 风险事件详情；
-* 证据链；
-* 风险评分；
-* 暂缓付款和补件工单；
-* D1持久化；
-* 审计日志；
-* 稳定演示模式。
+必须最先验证：
 
-## P1：增强展示
+- 浏览器通过预签名 PUT 上传 R2；
+- R2 CORS；
+- Pages Functions 读取 R2；
+- R2 GET 签名 URL 能否被星辰 OCR 工具访问；
+- 工作流开始节点的单文件、多文件 URL 参数，以及 Excel 工具引用 URL 时的真实结构；
+- Word/PPT 转 PDF、Excel 转 CSV/JSON 派生件的后端转换链路；
+- 文件和 URL 的大小、数量、有效期、超时限制。
 
-* 文件上传页面；
-* 合同原文高亮；
-* 验收图片相似度展示；
-* 规则中心；
-* 人工反馈页面；
-* 实时模型适配器；
-* 风险报告打印页面。
+### 阶段 2：单工作流闭环
 
-## P2：比赛后扩展
+- 上传 PDF；
+- OCR；
+- 输出标准 JSON；
+- 异步查询；
+- 保存 D1；
+- 前端展示一条风险和证据。
 
-* Cloudflare R2文件存储；
-* 真实OCR；
-* ERP、SRM、财务系统连接器；
-* 用户、角色和权限；
-* 消息通知；
-* 供应商关系图谱；
-* 批量风险扫描；
-* 多租户；
-* 私有化部署版本。
+### 阶段 3：多 Agent
 
----
+- 材料解析工作流；
+- 4 个领域审查工作流；
+- 聚合工作流；
+- `agent_runs` 状态展示；
+- 部分失败和重试。
 
-# 十八、MVP验收标准
+### 阶段 4：处置闭环
 
-完成版本至少满足以下条件：
+- 风险确认/驳回；
+- 暂缓付款；
+- 补件任务；
+- 审计日志；
+- 总览指标联动。
 
-1. 一键导入完整演示案例；
-2. 页面展示合同、三笔订单、发票、验收和付款数据；
-3. 六个Agent均产生真实数据库执行记录；
-4. 自动识别不少于四类风险；
-5. 风险分数和等级有明确计算依据；
-6. 每项风险能定位到具体证据；
-7. 系统可以执行暂缓付款、要求补件和升级复核；
-8. 所有操作写入审计日志；
-   9.刷新页面后案例和处置状态不丢失；
-9. 外部AI接口不可用时仍可完整演示；
-10. 可以一键重置演示数据；
-11. 完整演示过程不依赖手动修改数据库。
+### 阶段 5：比赛打磨
+
+- 固定黄金案例；
+- 控制样例页数和文件大小；
+- 准备星辰服务异常时的已缓存演示结果；
+- 优化 5～8 分钟演示路径；
+- 隐藏工程占位页面和内部调试文字。
 
 ---
 
-# 十九、项目差异化表述
+## 18. 技术验收清单
 
-RiskTrace的差异化不应表述为“我们也能做OCR、合同审查和三单匹配”，而应表述为：
+### 文件上传
 
-> 传统系统通常分别管理合同、订单、发票和付款，风险规则也多停留在单据级校验。RiskTrace以采购事件为核心，将合同义务、交易数据、验收材料和流程行为融合为统一证据链。系统不仅回答“哪个字段不一致”，还回答“多项异常为什么共同构成风险、依据是什么、应采取什么动作，以及处置之后如何持续跟踪”。
+- [ ] 前端可以一次选择多份文件；
+- [ ] 每份文件获得独立 R2 Key；
+- [ ] 文件直接上传 R2；
+- [ ] CORS 正确；
+- [ ] 上传成功后后端执行对象校验；
+- [ ] 失败文件可单独重试；
+- [ ] R2 Bucket 不公开。
 
-最终突出三个核心创新：
+### 星辰接入
 
-1. **合同义务自动转化为付款控制条件；**
-2. **结构化交易、非结构化材料与流程行为联合研判；**
-3. **风险证据链、分级处置和人工反馈形成治理闭环。**
+- [ ] 工作流已发布为 API；
+- [ ] 应用、APPID、模型授权和 Flow ID 已配置；
+- [ ] API Key 和 Secret 位于 Cloudflare Secret；
+- [ ] PDF/图片 OCR 通过；
+- [ ] 全部文件链路均未调用星辰文件上传接口；
+- [ ] Excel 通过 R2 URL 或 CSV/JSON 派生件解析通过；
+- [ ] Word/PPT 后端转 PDF/文本后，通过 R2 URL 解析通过；
+- [ ] 异步创建返回 `execute_id`；
+- [ ] 查询、取消和中断恢复通过；
+- [ ] 工作流输出为稳定 JSON；
+- [ ] Trace 日志可定位失败节点。
+
+### 多 Agent
+
+- [ ] 解析结果可被多个 Agent 复用；
+- [ ] 每个 Agent 有独立 `agent_run`；
+- [ ] 某个 Agent 失败时其他 Agent 结果保留；
+- [ ] 聚合结果标注分析限制；
+- [ ] 不展示私有思维链。
+
+### 数据与处置
+
+- [ ] 风险关联项目和付款申请；
+- [ ] 风险关联原始文件证据；
+- [ ] 证据可定位页码或单元格；
+- [ ] 暂缓付款动作写入审计日志；
+- [ ] 模型不能直接修改正式付款状态；
+- [ ] 支持清除比赛演示数据。
 
 ---
 
-# 二十、建议的首页宣传文案
+## 19. 最终结论
 
-主标题：
+本方案可以实现“前端一次性上传全部已有材料，R2 统一保存，讯飞星辰工作流读取并由多个 Agent 多维协作审查”的比赛 Demo，但应采用以下准确技术口径：
 
-> 每一笔付款，都有迹可循
+> 前端通过后端签发的预签名 PUT URL 将原始材料直接上传到私有 R2；RiskTrace 后端在发起审查时，为每份原件或派生件生成短时 GET URL，并将 URL 作为工作流开始节点文件变量传入星辰。OCR、Excel 等文件解析工具通过 URL 获取材料并输出文本、表格数据或结构化 JSON，后续多个领域 Agent 复用统一事实包完成采购程序、合同、履约验收和发票付款审查，聚合工作流生成标准化风险 JSON。RiskTrace 后端负责 URL 生命周期、异步任务状态、结果校验、D1 落库和人工处置闭环。整个链路不调用星辰文件上传接口，也不依赖星辰目录。
 
-副标题：
+不应承诺或描述为：
 
-> RiskTrace连接合同、订单、发票、验收与付款数据，通过多智能体协同发现跨环节合规风险，生成可验证证据链，并在资金支付前完成分级处置。
+> “Agent 登录 R2，并把文件下载到一个由 RiskTrace 可控制的星辰本地工作目录。”
 
-主要按钮：
-
-```text
-进入风险驾驶舱
-导入演示案例
-```
-
-三项能力：
-
-```text
-跨环节风险发现
-从单据校验升级为采购事件联合研判
-
-可解释证据融合
-每项风险均可定位至原始文档、字段和制度条款
-
-闭环处置与学习
-从预警、补件、复核到审计留痕和反馈更新
-```
-
-[1]: https://developers.cloudflare.com/pages/functions/routing/?utm_source=chatgpt.com "Routing · Cloudflare Pages docs"
-[2]: https://github.com/DannyWongIsAvailable/RiskTrace/blob/main/wrangler.jsonc "RiskTrace/wrangler.jsonc at main · DannyWongIsAvailable/RiskTrace · GitHub"
-[3]: https://developers.cloudflare.com/pages/functions/bindings/?utm_source=chatgpt.com "Bindings · Cloudflare Pages docs"
+公开官方文档没有提供这样的文件系统接口。采用“R2 短时 GET URL + 文件解析工具 + 结构化事实包 + 异步工作流”的描述，更准确，也更容易真正开发完成。

@@ -20,7 +20,7 @@ src/types/api.ts         通用响应、分页和错误类型
 推荐按业务领域建立模块：
 
 ```text
-src/api/modules/cases.ts
+src/api/modules/projects.ts
 src/api/modules/tasks.ts
 src/api/modules/rules.ts
 src/api/modules/dashboard.ts
@@ -42,17 +42,17 @@ src/api/modules/dashboard.ts
 ## 3. 示例
 
 ```ts
-interface CaseQuery {
+interface ProjectQuery {
   page: number
   pageSize: number
   riskLevel?: string
 }
 
-export function listCases(
-  query: CaseQuery,
+export function listProjects(
+  query: ProjectQuery,
   signal?: AbortSignal,
-): Promise<PaginatedData<RiskCase>> {
-  return http.get('/api/cases', { query, signal })
+): Promise<PaginatedData<Project>> {
+  return http.get('/api/projects', { query, signal })
 }
 ```
 

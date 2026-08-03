@@ -34,17 +34,17 @@ const router = createRouter({
           },
         },
         {
-          path: 'cases',
-          name: 'cases',
+          path: 'projects',
+          name: 'projects',
           component: FeaturePlaceholderView,
           meta: {
-            title: '风险事件',
-            description: '管理采购事件、风险信号与可追溯证据链。',
+            title: '采购项目',
+            description: '管理采购项目、项目材料、合规审查与可追溯证据链。',
             navigation: {
               group: 'main',
               order: 20,
-              icon: AppIcons.navigation.cases,
-              description: '采购事件与证据链',
+              icon: AppIcons.navigation.projects,
+              description: '采购项目与合规审查',
             },
           },
         },
