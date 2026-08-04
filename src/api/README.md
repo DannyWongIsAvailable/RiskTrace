@@ -21,8 +21,8 @@ src/types/api.ts         通用响应、分页和错误类型
 
 ```text
 src/api/modules/projects.ts
-src/api/modules/tasks.ts
-src/api/modules/rules.ts
+src/api/modules/uploads.ts
+src/api/modules/reviews.ts
 src/api/modules/dashboard.ts
 ```
 

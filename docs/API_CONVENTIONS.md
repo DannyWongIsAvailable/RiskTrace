@@ -8,18 +8,21 @@
 GET    /api/projects
 POST   /api/projects
 GET    /api/projects/:projectId
-PATCH  /api/projects/:projectId
-POST   /api/projects/:projectId/actions
-GET    /api/tasks
-PATCH  /api/tasks/:taskId
+POST   /api/projects/:projectId/upload-sessions
+POST   /api/projects/:projectId/documents/:documentId/complete
+POST   /api/projects/:projectId/uploads/complete
+GET    /api/projects/:projectId/review
+GET    /api/projects/:projectId/material-analysis
+GET    /api/projects/:projectId/report
+POST   /api/projects/:projectId/review/retry
 ```
 
 路径中尽量避免直接使用动作动词。
 只有当某项操作属于明确的业务命令，且无法通过常规资源更新准确表达时，才使用动作型子资源，例如：
 
 ```text
-POST /api/projects/:projectId/actions
-POST /api/projects/:projectId/reviews
+POST /api/projects/:projectId/uploads/complete
+POST /api/projects/:projectId/review/retry
 ```
 
 接口路径：
@@ -96,7 +99,8 @@ VALIDATION_FAILED
 UNAUTHORIZED
 FORBIDDEN
 PROJECT_NOT_FOUND
-TASK_NOT_FOUND
+DOCUMENT_NOT_FOUND
+REVIEW_RUN_NOT_FOUND
 CONFLICTING_STATE
 RATE_LIMITED
 INTERNAL_ERROR
@@ -107,10 +111,11 @@ INTERNAL_ERROR
 推荐按业务领域扩展：
 
 ```text
-PROJECT_ALREADY_CLOSED
-PAYMENT_ALREADY_HELD
-REVIEW_REASON_REQUIRED
-RULE_CODE_CONFLICT
+UPLOAD_SESSION_EXPIRED
+DOCUMENT_UPLOAD_INCOMPLETE
+REVIEW_ALREADY_RUNNING
+WORKFLOW_START_FAILED
+WORKFLOW_OUTPUT_INVALID
 ```
 
 ## 5. 分页
@@ -199,7 +204,7 @@ interface MoneyAmount {
 - JSON 字段统一使用 camelCase；
 - 请求体只包含当前操作所需字段；
 - 更新接口优先使用 `PATCH` 表示部分更新；
-- 不允许客户端提交服务端负责生成的审计字段；
+- 不允许客户端提交服务端生成的 ID、工作流执行 ID、系统阶段和结果保存时间；
 - 枚举值必须有明确类型和文档；
 - 用户输入在服务端验证后才能访问数据库。
 
@@ -230,7 +235,7 @@ Pages Functions 应复用 `functions/_shared/http.ts` 中的响应工具。
 - 访问 D1 前完成输入校验；
 - 对数据库写操作处理冲突与重试边界；
 - 返回用户可理解、但不泄露内部信息的错误；
-- 每个需要审计的业务动作写入审计记录；
+- 项目创建、上传批次完成、工作流启动、阶段变化、重试和失败必须记录结构化日志；
 - 环境变量和密钥仅通过绑定读取。
 - 路由从 `context.data.requestId` 读取全局中间件生成的请求编号，并传入 `success` 或 `failure`；
 - 未处理异常由 `functions/_middleware.ts` 统一记录和转换为 500 响应；

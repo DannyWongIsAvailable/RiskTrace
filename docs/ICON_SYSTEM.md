@@ -78,7 +78,6 @@ import {
   EditPen,
   Expand,
   Filter,
-  Finished,
   Fold,
   Grid,
   Loading,
@@ -86,7 +85,6 @@ import {
   MoreFilled,
   Refresh,
   Search,
-  Setting,
   Upload,
   User,
   View,
@@ -97,8 +95,6 @@ export const AppIcons = {
   navigation: {
     dashboard: DataAnalysis,
     projects: DocumentChecked,
-    tasks: Finished,
-    rules: Setting,
     foundation: Grid,
   },
   action: {
@@ -154,10 +150,10 @@ import { AppIcons } from '@/icons'
 
 | 场景 | 建议图标 |
 |---|---|
-| 风险驾驶舱 | `DataAnalysis` |
+| 风险总览 | `DataAnalysis` |
 | 采购项目 | `DocumentChecked` |
-| 处置任务 | `Finished` |
-| 规则中心 | `Setting` |
+| 上传材料 | `Upload` |
+| 查看报告 | `View` |
 | 搜索 | `Search` |
 | 筛选 | `Filter` |
 | 刷新 | `Refresh` |
@@ -343,7 +339,7 @@ ESLint 应限制业务代码直接导入图标库：
 以下内容可以使用独立 SVG 或图片静态资源：
 
 - RiskTrace 品牌标志；
-- 业务流程图、证据链图形和关系拓扑；
+- 自动审查流程图、材料关系图形和领域关系拓扑；
 - 无法由通用图标准确表达的领域专属符号；
 - 报告、打印页面和演示中的正式插图；
 - 经产品确认的机构标识或固定身份头像；
@@ -361,7 +357,7 @@ ESLint 应限制业务代码直接导入图标库：
 
 ### 13.3 SVG 质量要求
 
-- 使用语义化、短横线命名，例如 `risk-evidence-chain.svg`；
+- 使用语义化、短横线命名，例如 `review-workflow-overview.svg`；
 - 设置正确的 `viewBox`，避免只依赖固定宽高；
 - 删除编辑器元数据、隐藏图层和无用节点；
 - 不嵌入脚本、外链资源、事件处理器或大体积 Base64；

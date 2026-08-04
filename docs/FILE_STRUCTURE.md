@@ -8,6 +8,7 @@ RiskTrace/
 ├── AI_FRONTEND_STANDARD.md
 ├── README.md
 ├── docs/
+│   ├── Demo应用设计方案.md
 │   ├── API_CONVENTIONS.md
 │   ├── ERROR_HANDLING_AND_OBSERVABILITY.md
 │   ├── FRONTEND_DESIGN_SYSTEM.md
@@ -69,8 +70,9 @@ RiskTrace/
 ```text
 DashboardView.vue
 ProjectListView.vue
+ProjectCreateView.vue
 ProjectDetailView.vue
-TaskCenterView.vue
+ReviewReportView.vue
 ```
 
 ## 4. `src/layouts/`
@@ -115,8 +117,10 @@ TaskCenterView.vue
 
 ```text
 src/components/project/ProjectTable.vue
-src/components/project/EvidenceChain.vue
-src/components/task/TaskDispositionPanel.vue
+src/components/project/MaterialUploadPanel.vue
+src/components/review/ReviewProgress.vue
+src/components/review/MaterialAnalysisPanel.vue
+src/components/review/RiskFindingTable.vue
 ```
 
 只在一个页面中使用且结构简单的内容，可以暂时保留在页面中；职责独立或明显会复用时再抽取。
@@ -132,8 +136,8 @@ src/api/modules/         按业务领域划分的接口模块
 
 ```text
 src/api/modules/projects.ts
-src/api/modules/tasks.ts
-src/api/modules/rules.ts
+src/api/modules/uploads.ts
+src/api/modules/reviews.ts
 ```
 
 Vue 组件和 Pinia Store 不得直接调用 `fetch`。
@@ -251,7 +255,7 @@ utilities.css  少量跨页面工具类
 ```text
 functions/_middleware.ts  全局请求编号、耗时日志和未处理异常兜底
 functions/api/             Pages Functions 文件系统路由
-functions/_shared/         后端共享响应、校验、数据库和审计工具
+functions/_shared/         后端共享响应、校验、数据库、文件服务和 Review Provider
 ```
 
 要求：
