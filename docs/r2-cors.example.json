@@ -1,0 +1,26 @@
+{
+  "rules": [
+    {
+      "id": "risktrace-browser-upload",
+      "allowed": {
+        "origins": [
+          "https://risktrace.pages.dev",
+          "http://localhost:5173"
+        ],
+        "methods": [
+          "GET",
+          "PUT",
+          "HEAD"
+        ],
+        "headers": [
+          "Content-Type",
+          "x-amz-checksum-sha256"
+        ]
+      },
+      "exposeHeaders": [
+        "ETag"
+      ],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}

@@ -124,7 +124,7 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、单工作�
 
 处置中心和规则中心不属于当前 Demo 范围，不应作为当前版本的业务导航或开发目标。
 
-当前仓库已经完成前端工程底座、设计系统、统一请求和基础观测能力；项目、上传、D1、R2、Review Provider 和报告链路尚待按设计方案实现。
+当前仓库已经完成前端工程底座，以及项目、上传、D1、R2、Review Provider、工作流回调、结果校验和报告读取的后端 MVP；采购项目业务页面和前端 API 接入仍待实现。
 
 ## 7. 目录约定
 
@@ -223,6 +223,7 @@ pnpm cf:deploy
 ## 11. 开发前必读
 
 - `docs/Demo应用设计方案.md`：当前 Demo 的业务范围、单工作流链路和数据设计；
+- `docs/BACKEND_MVP.md`：后端部署、环境变量、工作流输入输出和 API 联调说明；
 - `AGENTS.md`：AI 与人工开发必须遵守的工程契约；
 - `AI_FRONTEND_STANDARD.md`：前端开发速查；
 - `docs/FRONTEND_DESIGN_SYSTEM.md`：设计系统；

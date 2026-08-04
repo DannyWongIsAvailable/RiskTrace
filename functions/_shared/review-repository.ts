@@ -1,0 +1,199 @@
+import type { ProviderStatus, ReviewRunRow, ReviewStage, ReviewStatus } from './domain'
+import { AppError } from './errors'
+
+export async function createOrGetReviewRun(
+  db: D1Database,
+  input: { id: string; projectId: string; now: string },
+): Promise<ReviewRunRow> {
+  await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO review_runs (
+          id, project_id, status, stage, provider_status, progress,
+          attempt_count, started_at, updated_at
+        ) VALUES (?, ?, 'reviewing', 'material_analysis_running', 'pending', 20, 0, ?, ?)`,
+      )
+      .bind(input.id, input.projectId, input.now, input.now),
+    db
+      .prepare(
+        `UPDATE projects
+         SET status = 'reviewing', stage = 'material_analysis_running', updated_at = ?
+         WHERE id = ? AND status IN ('draft', 'uploading')`,
+      )
+      .bind(input.now, input.projectId),
+  ])
+
+  return requireReviewRunByProject(db, input.projectId)
+}
+
+export async function findReviewRunByProject(
+  db: D1Database,
+  projectId: string,
+): Promise<ReviewRunRow | null> {
+  return db
+    .prepare('SELECT * FROM review_runs WHERE project_id = ?')
+    .bind(projectId)
+    .first<ReviewRunRow>()
+}
+
+export async function requireReviewRunByProject(
+  db: D1Database,
+  projectId: string,
+): Promise<ReviewRunRow> {
+  const run = await findReviewRunByProject(db, projectId)
+  if (!run) {
+    throw new AppError('REVIEW_RUN_NOT_FOUND', '该项目尚未开始合规审查', 404)
+  }
+
+  return run
+}
+
+export async function requireReviewRunById(
+  db: D1Database,
+  reviewRunId: string,
+): Promise<ReviewRunRow> {
+  const run = await db
+    .prepare('SELECT * FROM review_runs WHERE id = ?')
+    .bind(reviewRunId)
+    .first<ReviewRunRow>()
+
+  if (!run) {
+    throw new AppError('REVIEW_RUN_NOT_FOUND', '未找到合规审查运行', 404)
+  }
+
+  return run
+}
+
+export async function claimReviewRunStart(
+  db: D1Database,
+  reviewRunId: string,
+  now: string,
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE review_runs
+       SET provider_status = 'starting', status = 'reviewing',
+           stage = 'material_analysis_running', progress = 20,
+           attempt_count = attempt_count + 1,
+           error_code = NULL, error_message = NULL,
+           finished_at = NULL, updated_at = ?
+       WHERE id = ? AND provider_execute_id IS NULL AND provider_status = 'pending'`,
+    )
+    .bind(now, reviewRunId)
+    .run()
+
+  return (result.meta.changes ?? 0) === 1
+}
+
+export async function attachProviderExecuteId(
+  db: D1Database,
+  input: { reviewRunId: string; executeId: string; now: string },
+): Promise<void> {
+  const result = await db
+    .prepare(
+      `UPDATE review_runs
+       SET provider_execute_id = ?, provider_status = 'running', updated_at = ?
+       WHERE id = ? AND provider_status = 'starting'`,
+    )
+    .bind(input.executeId, input.now, input.reviewRunId)
+    .run()
+
+  if ((result.meta.changes ?? 0) !== 1) {
+    throw new AppError('CONFLICTING_STATE', '审查运行状态已变化，无法保存工作流执行编号', 409)
+  }
+}
+
+export async function updateReviewState(
+  db: D1Database,
+  input: {
+    reviewRunId: string
+    projectId: string
+    status: ReviewStatus
+    stage: ReviewStage
+    providerStatus: ProviderStatus
+    progress: number
+    now: string
+    errorCode?: string | null
+    errorMessage?: string | null
+    finishedAt?: string | null
+  },
+): Promise<void> {
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE review_runs
+         SET status = ?, stage = ?, provider_status = ?, progress = ?,
+             error_code = ?, error_message = ?, finished_at = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(
+        input.status,
+        input.stage,
+        input.providerStatus,
+        input.progress,
+        input.errorCode ?? null,
+        input.errorMessage ?? null,
+        input.finishedAt ?? null,
+        input.now,
+        input.reviewRunId,
+      ),
+    db
+      .prepare(
+        `UPDATE projects
+         SET status = ?, stage = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(input.status, input.stage, input.now, input.projectId),
+  ])
+}
+
+export async function markMaterialAnalysisSaved(
+  db: D1Database,
+  input: { reviewRunId: string; projectId: string; now: string; stage?: ReviewStage },
+): Promise<void> {
+  const stage = input.stage ?? 'material_analysis_completed'
+  const progress = stage === 'material_analysis_completed' ? 40 : stage === 'domain_review_running' ? 65 : 85
+
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE review_runs
+         SET status = 'reviewing', stage = ?, provider_status = 'running', progress = ?,
+             material_analysis_saved_at = COALESCE(material_analysis_saved_at, ?),
+             error_code = NULL, error_message = NULL, updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(stage, progress, input.now, input.now, input.reviewRunId),
+    db
+      .prepare(
+        `UPDATE projects
+         SET status = 'reviewing', stage = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(stage, input.now, input.projectId),
+  ])
+}
+
+export async function prepareReviewRetry(
+  db: D1Database,
+  input: { reviewRunId: string; projectId: string; now: string },
+): Promise<void> {
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE review_runs
+         SET status = 'reviewing', stage = 'material_analysis_running',
+             provider_execute_id = NULL, provider_status = 'pending', progress = 20,
+             error_code = NULL, error_message = NULL, finished_at = NULL, updated_at = ?
+         WHERE id = ? AND status = 'failed'`,
+      )
+      .bind(input.now, input.reviewRunId),
+    db
+      .prepare(
+        `UPDATE projects
+         SET status = 'reviewing', stage = 'material_analysis_running', updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(input.now, input.projectId),
+  ])
+}

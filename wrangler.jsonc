@@ -1,20 +1,28 @@
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "risktrace",
-	"pages_build_output_dir": "./dist",
-	"compatibility_date": "2026-07-27",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"vars": {
-		"APP_NAME": "RiskTrace",
-		"APP_ENV": "production"
-	},
-	"d1_databases": [
-		{
-			"binding": "risktrace_db",
-			"database_name": "risktrace-db",
-			"database_id": "078db37b-e6b2-4fc7-b024-e759d806a54a"
-		}
-	]
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "risktrace",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-07-27",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "APP_NAME": "RiskTrace",
+    "APP_ENV": "production",
+    "XFYUN_API_BASE_URL": "https://xingchen-api.xf-yun.com",
+    "R2_BUCKET_NAME": "risktrace-files"
+  },
+  "d1_databases": [
+    {
+      "binding": "risktrace_db",
+      "database_name": "risktrace-db",
+      "database_id": "078db37b-e6b2-4fc7-b024-e759d806a54a"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "risktrace_files",
+      "bucket_name": "risktrace-files"
+    }
+  ]
 }
