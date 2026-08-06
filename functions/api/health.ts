@@ -1,8 +1,21 @@
 import { success } from '../_shared/http'
 import type { RequestData } from '../_shared/domain'
 
-export const onRequestGet: PagesFunction<Env, string, RequestData> = async ({ env, data }) => {
-  const database = await env.risktrace_db.prepare('SELECT 1 AS ok').first<{ ok: number }>()
+export const onRequestGet: PagesFunction<Env, string, RequestData> = async ({
+  env,
+  data,
+}) => {
+  const database = await env.risktrace_db
+    .prepare('SELECT 1 AS ok')
+    .first<{ ok: number }>()
+
+  const objectStorageConfigured = Boolean(
+    env.risktrace_files &&
+      env.CLOUDFLARE_ACCOUNT_ID?.trim() &&
+      env.R2_BUCKET_NAME?.trim() &&
+      env.R2_ACCESS_KEY_ID?.trim() &&
+      env.R2_SECRET_ACCESS_KEY?.trim(),
+  )
 
   return success(
     {
@@ -11,9 +24,13 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async ({ en
       status: database?.ok === 1 ? 'healthy' : 'degraded',
       services: {
         database: database?.ok === 1 ? 'available' : 'unavailable',
-        objectStorage: env.risktrace_files ? 'configured' : 'unavailable',
+        objectStorage: objectStorageConfigured
+          ? 'configured'
+          : 'unconfigured',
         reviewProvider:
-          env.XFYUN_API_KEY && env.XFYUN_API_SECRET && env.XFYUN_FLOW_ID_REVIEW
+          env.XFYUN_API_KEY &&
+          env.XFYUN_API_SECRET &&
+          env.XFYUN_FLOW_ID_REVIEW
             ? 'configured'
             : 'unconfigured',
       },

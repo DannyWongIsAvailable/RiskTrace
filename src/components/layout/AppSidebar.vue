@@ -63,7 +63,7 @@ const supportNavigation = getNavigationItems(router, 'support')
         </RouterLink>
       </div>
 
-      <div class="app-sidebar__group app-sidebar__group--support">
+      <div v-if="supportNavigation.length" class="app-sidebar__group app-sidebar__group--support">
         <span v-if="!collapsed || mobile" class="app-sidebar__group-label">工程支持</span>
         <RouterLink
           v-for="item in supportNavigation"

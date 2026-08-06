@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { AppIcons } from '@/icons'
-import { showPendingIntegration } from '@/utils/interaction'
 
 const emit = defineEmits<{
   openNavigation: []
@@ -12,10 +11,8 @@ const emit = defineEmits<{
 const route = useRoute()
 const pageTitle = computed(() => {
   const title = route.meta['title']
-
   return typeof title === 'string' && title.trim() ? title : 'RiskTrace'
 })
-const environment = import.meta.env.MODE === 'production' ? '生产环境' : '开发环境'
 </script>
 
 <template>
@@ -29,26 +26,13 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
       </button>
       <div class="app-topbar__page-context">
         <span class="app-topbar__page-title">{{ pageTitle }}</span>
-        <span class="app-topbar__environment">{{ environment }}</span>
+        <span class="app-topbar__environment">RiskTrace MVP</span>
       </div>
     </div>
 
-    <div class="app-topbar__actions">
-      <div class="app-topbar__system-status">
-        <span class="app-topbar__status-dot" />
-        <span>系统运行正常</span>
-      </div>
-      <button class="app-topbar__profile" type="button" @click="showPendingIntegration">
-        <span class="app-topbar__avatar">
-          <el-icon class="app-topbar__avatar-icon">
-            <component :is="AppIcons.account.user" />
-          </el-icon>
-        </span>
-        <span class="app-topbar__profile-copy">
-          <strong>系统管理员</strong>
-          <span>账户与设置</span>
-        </span>
-      </button>
+    <div class="app-topbar__mode">
+      <span class="app-topbar__mode-dot" />
+      <span>Mock 报告模式</span>
     </div>
   </header>
 </template>
@@ -70,15 +54,12 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
 }
 
 .app-topbar__leading,
-.app-topbar__actions,
-.app-topbar__profile,
-.app-topbar__system-status {
+.app-topbar__mode {
   display: flex;
   align-items: center;
 }
 
-.app-topbar__leading,
-.app-topbar__actions {
+.app-topbar__leading {
   gap: var(--rt-space-4);
 }
 
@@ -102,8 +83,7 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
   font-size: var(--rt-icon-size-md);
 }
 
-.app-topbar__page-context,
-.app-topbar__profile-copy {
+.app-topbar__page-context {
   display: flex;
   flex-direction: column;
 }
@@ -120,58 +100,17 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
   font-size: 11px;
 }
 
-.app-topbar__system-status {
+.app-topbar__mode {
   gap: var(--rt-space-2);
   color: var(--rt-text-tertiary);
   font-size: var(--rt-font-size-xs);
 }
 
-.app-topbar__status-dot {
+.app-topbar__mode-dot {
   width: 7px;
   height: 7px;
   border-radius: var(--rt-radius-round);
-  background: var(--rt-color-success-600);
-}
-
-.app-topbar__profile {
-  gap: var(--rt-space-3);
-  padding: 0;
-  background: transparent;
-  color: var(--rt-text-primary);
-  text-align: left;
-}
-
-.app-topbar__profile {
-  cursor: pointer;
-}
-
-.app-topbar__profile:hover {
-  opacity: 0.78;
-}
-
-.app-topbar__avatar {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border: 1px solid var(--rt-color-primary-200);
-  border-radius: var(--rt-radius-round);
-  background: var(--rt-color-primary-50);
-  color: var(--rt-color-primary-700);
-}
-
-.app-topbar__avatar-icon {
-  font-size: var(--rt-icon-size-md);
-}
-
-.app-topbar__profile-copy strong {
-  font-size: var(--rt-font-size-sm);
-}
-
-.app-topbar__profile-copy span {
-  margin-top: 2px;
-  color: var(--rt-text-tertiary);
-  font-size: 11px;
+  background: var(--rt-color-warning-500);
 }
 
 @media (max-width: 900px) {
@@ -185,8 +124,7 @@ const environment = import.meta.env.MODE === 'production' ? '生产环境' : '�
 }
 
 @media (max-width: 640px) {
-  .app-topbar__system-status,
-  .app-topbar__profile-copy,
+  .app-topbar__mode,
   .app-topbar__environment {
     display: none;
   }

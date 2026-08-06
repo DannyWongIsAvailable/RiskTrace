@@ -9,6 +9,7 @@ import { AppError } from './errors'
 import { createId } from './ids'
 import { expectArray, expectObject, expectPositiveInteger, expectString, optionalString } from './input'
 import { requireProject } from './project-repository'
+import { headR2Object } from './r2-object-service'
 import { createPresignedR2Url } from './r2-signing'
 
 const MAX_FILES_PER_PROJECT = 30
@@ -185,7 +186,7 @@ export async function confirmDocumentUpload(
   documentId: string,
 ): Promise<DocumentRow> {
   const document = await requireDocument(env.risktrace_db, projectId, documentId)
-  const object = await env.risktrace_files.head(document.r2_object_key)
+  const object = await headR2Object(env, document.r2_object_key)
 
   if (!object) {
     throw new AppError('DOCUMENT_UPLOAD_INCOMPLETE', '尚未在对象存储中找到该材料', 409)
@@ -195,8 +196,8 @@ export async function confirmDocumentUpload(
   }
 
   if (document.checksum_sha256) {
-    const uploadedChecksum = object.checksums.sha256
-    if (!uploadedChecksum || bytesToHex(uploadedChecksum) !== document.checksum_sha256) {
+    const uploadedChecksum = object.checksumSha256Base64
+    if (!uploadedChecksum || uploadedChecksum !== hexToBase64(document.checksum_sha256)) {
       throw new AppError('DOCUMENT_CHECKSUM_MISMATCH', '上传材料校验值不一致', 422)
     }
   }
@@ -286,6 +287,3 @@ function hexToBase64(value: string): string {
   return btoa(binary)
 }
 
-function bytesToHex(value: ArrayBuffer): string {
-  return [...new Uint8Array(value)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
-}

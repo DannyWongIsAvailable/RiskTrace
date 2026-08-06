@@ -16,7 +16,7 @@ interface R2SigningConfig {
 export async function createPresignedR2Url(
   env: Env,
   input: {
-    method: 'GET' | 'PUT'
+    method: 'GET' | 'PUT' | 'HEAD'
     objectKey: string
     expiresInSeconds: number
     signedHeaders?: Record<string, string>

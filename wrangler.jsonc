@@ -22,7 +22,8 @@
   "r2_buckets": [
     {
       "binding": "risktrace_files",
-      "bucket_name": "risktrace-files"
+      "bucket_name": "risktrace-files",
+      "remote": true
     }
   ]
 }

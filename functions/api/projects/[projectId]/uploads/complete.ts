@@ -1,19 +1,15 @@
 import type { RequestData } from '../../../../_shared/domain'
 import { success } from '../../../../_shared/http'
-import { startProjectReview } from '../../../../_shared/review-service'
+import { completeProjectReviewWithMock } from '../../../../_shared/mock-review-service'
 import { getPathParam } from '../../../../_shared/route'
 
 export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async ({
-  request,
   params,
   env,
   data,
 }) => {
   const projectId = getPathParam(params, 'projectId')
-  const run = await startProjectReview(env, {
-    projectId,
-    requestOrigin: new URL(request.url).origin,
-  })
+  const run = await completeProjectReviewWithMock(env, projectId)
 
   return success(
     {
@@ -21,11 +17,10 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
       reviewRunId: run.id,
       status: run.status,
       stage: run.stage,
-      pollUrl: `/api/projects/${projectId}/review`,
+      reportUrl: `/api/projects/${projectId}/report`,
     },
     {
-      status: 202,
-      message: '材料上传已完成，合规审查已自动启动',
+      message: '材料上传已完成，MVP Mock 报告已生成',
       requestId: data.requestId,
     },
   )

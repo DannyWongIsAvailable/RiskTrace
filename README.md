@@ -6,6 +6,12 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需�
 
 完整产品范围和实现口径见：`docs/Demo应用设计方案.md`。
 
+## 当前 MVP 开发模式
+
+为先打通可演示链路，当前前端仅保留“项目列表 → 新建项目 → 上传材料 → 查看报告”四个页面。项目、文件和报告仍通过 Pages Functions、D1 与 R2 真实读写；`POST /api/projects/:projectId/uploads/complete` 暂不启动讯飞星辰工作流，而是由后端生成符合正式 `ReviewReport` 契约的 Mock 材料理解结果和 Mock 报告并写入 D1。
+
+现有 Review Provider、星辰回调和正式结果校验代码继续保留。接入工作流时，只需将上传批次完成接口切回 `startProjectReview`，前端报告页和报告查询接口无需改版。
+
 ## 1. 核心链路
 
 ```text
