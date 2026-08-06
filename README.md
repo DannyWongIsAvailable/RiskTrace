@@ -8,9 +8,9 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需�
 
 ## 当前 MVP 开发模式
 
-为先打通可演示链路，当前前端仅保留“项目列表 → 新建项目 → 上传材料 → 查看报告”四个页面。项目、文件和报告仍通过 Pages Functions、D1 与 R2 真实读写；`POST /api/projects/:projectId/uploads/complete` 暂不启动讯飞星辰工作流，而是由后端生成符合正式 `ReviewReport` 契约的 Mock 材料理解结果和 Mock 报告并写入 D1。
+为先打通可演示链路，当前前端保留“项目列表 → 新建项目 → 上传材料 → 查看报告”四个页面。项目、文件和结果仍通过 Pages Functions、D1 与 R2 真实读写；`POST /api/projects/:projectId/uploads/complete` 暂不启动讯飞星辰工作流，而是先生成并保存符合正式 `MaterialAnalysis` 契约的 Mock 材料分类结果。前端立即展示分类、摘要与完整性检查，并通过审查状态接口继续轮询；Mock 服务随后依次推进领域审查、报告聚合并幂等生成符合正式 `ReviewReport` 契约的最终报告。
 
-现有 Review Provider、星辰回调和正式结果校验代码继续保留。接入工作流时，只需将上传批次完成接口切回 `startProjectReview`，前端报告页和报告查询接口无需改版。
+现有 Review Provider、星辰回调和正式结果校验代码继续保留。接入工作流时，只需将上传批次完成接口切回 `startProjectReview`，前端材料结果、状态轮询、报告页和报告查询接口无需改版。
 
 ## 1. 核心链路
 
@@ -124,13 +124,13 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、单工作�
 | `/dashboard` | 风险总览 | 展示项目、审查状态、材料完整性和风险概览 |
 | `/projects` | 采购项目列表 | 查询项目和进入新建流程 |
 | `/projects/new` | 新建采购项目 | 填写项目标题并一次性上传材料 |
-| `/projects/:projectId` | 项目详情 | 展示上传材料、自动审查进度和材料理解结果 |
+| `/projects/:projectId/upload` | 项目材料与审查进度 | 上传材料、展示 Mock 分类并轮询报告状态 |
 | `/projects/:projectId/report` | 合规审查报告 | 展示只读风险报告和关联文件 |
 | `/foundation` | 设计系统 | 仅开发环境使用的基础组件预览 |
 
 处置中心和规则中心不属于当前 Demo 范围，不应作为当前版本的业务导航或开发目标。
 
-当前仓库已经完成前端工程底座，以及项目、上传、D1、R2、Review Provider、工作流回调、结果校验和报告读取的后端 MVP；采购项目业务页面和前端 API 接入仍待实现。
+当前仓库已经完成前端工程底座、采购项目四页面、项目与上传 API、D1/R2 读写、Mock 分阶段审查、Review Provider、工作流回调、结果校验和报告读取。
 
 ## 7. 目录约定
 

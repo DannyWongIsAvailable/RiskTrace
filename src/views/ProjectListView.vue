@@ -75,6 +75,14 @@ function getProjectStageLabel(row: unknown): string {
   return stageLabels[asProjectSummary(row).stage]
 }
 
+function getProjectActionLabel(row: unknown): string {
+  const project = asProjectSummary(row)
+  if (project.status === 'completed') return '查看报告'
+  if (project.status === 'reviewing') return '查看进度'
+  if (project.status === 'failed') return '查看失败详情'
+  return '上传材料'
+}
+
 function openProject(row: unknown): void {
   const project = asProjectSummary(row)
   const routeName = project.status === 'completed' ? 'project-report' : 'project-upload'
@@ -156,7 +164,7 @@ onBeforeUnmount(() => loadController?.abort())
 
     <InlineNotice
       title="MVP 模式"
-      description="项目、文件和报告均通过真实 API 与 D1/R2 交互；报告内容暂由后端 Mock 服务生成，尚未调用星辰工作流。"
+      description="项目、文件和结果均通过真实 API 与 D1/R2 交互；上传完成后先展示 Mock 分类，再自动生成 Mock 报告。"
       tone="neutral"
     />
 
@@ -206,7 +214,7 @@ onBeforeUnmount(() => loadController?.abort())
         <el-table-column label="操作" width="190" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="openProject(row)">
-              {{ row.status === 'completed' ? '查看报告' : '上传材料' }}
+              {{ getProjectActionLabel(row) }}
             </el-button>
             <el-button
               type="danger"

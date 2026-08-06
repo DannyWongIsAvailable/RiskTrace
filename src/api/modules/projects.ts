@@ -7,9 +7,11 @@ import type {
   DeleteProjectResult,
   ProjectDetail,
   ProjectDocument,
+  MaterialAnalysis,
   ProjectListData,
   ProjectSummary,
   ReviewReport,
+  ReviewStatusResult,
   UploadSession,
   UploadSessionFile,
 } from '@/types/project'
@@ -95,6 +97,20 @@ export function completeProjectUploads(
     undefined,
     { signal, timeoutMs: 30_000 },
   )
+}
+
+export function getProjectMaterialAnalysis(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<MaterialAnalysis> {
+  return http.get<MaterialAnalysis>(`/api/projects/${projectId}/material-analysis`, { signal })
+}
+
+export function getProjectReviewStatus(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<ReviewStatusResult> {
+  return http.get<ReviewStatusResult>(`/api/projects/${projectId}/review`, { signal })
 }
 
 export function getProjectReport(

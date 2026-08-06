@@ -12,6 +12,15 @@ export type ProjectStage =
   | 'failed'
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical'
 export type CompletenessResult = 'complete' | 'incomplete' | 'uncertain'
+export type MaterialCategory =
+  | '采购立项与审批'
+  | '供应商与寻源'
+  | '合同与补充协议'
+  | '订单与执行'
+  | '交付与验收'
+  | '发票与付款'
+  | '其他材料'
+  | '无法判断'
 export type UploadFileStatus = 'queued' | 'uploading' | 'uploaded' | 'failed'
 
 export interface ProjectSummary {
@@ -81,11 +90,51 @@ export interface UploadSession {
 export interface CompleteUploadsResult {
   projectId: string
   reviewRunId: string
-  status: 'completed'
-  stage: 'report_completed'
+  status: 'reviewing' | 'completed'
+  stage:
+    | 'material_analysis_completed'
+    | 'domain_review_running'
+    | 'report_aggregating'
+    | 'report_completed'
+  materialAnalysisUrl: string
+  pollUrl: string
   reportUrl: string
 }
 
+export interface MaterialAnalysis {
+  projectTitle: string
+  status: 'reviewing'
+  stage: 'material_analysis_completed'
+  summary: string
+  materials: Array<{
+    documentId: string
+    fileName: string
+    materialName: string
+    category: MaterialCategory
+    summary: string
+  }>
+  completeness: {
+    result: CompletenessResult
+    summary: string
+    missingMaterials: string[]
+  }
+}
+
+export interface ReviewStatusResult {
+  projectId: string
+  reviewRunId: string
+  status: 'reviewing' | 'completed' | 'failed'
+  stage: Exclude<ProjectStage, 'waiting_for_upload' | 'uploading_files'>
+  progress: number
+  message: string
+  materialAnalysisAvailable: boolean
+  reportAvailable: boolean
+  error?: {
+    code: string
+    message: string
+    retryable: boolean
+  }
+}
 
 export interface DeleteProjectResult {
   projectId: string

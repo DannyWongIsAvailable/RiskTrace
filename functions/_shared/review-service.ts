@@ -10,6 +10,7 @@ import type {
 import { AppError } from './errors'
 import { createWorkflowFileList } from './file-service'
 import { createId } from './ids'
+import { isMockReviewRun, synchronizeProjectReviewWithMock } from './mock-review-service'
 import { requireProject } from './project-repository'
 import {
   attachProviderExecuteId,
@@ -172,9 +173,14 @@ export async function getReviewStatus(
   projectId: string,
   synchronize = true,
 ): Promise<ReviewStatusResponse> {
-  const run = synchronize
-    ? await synchronizeProjectReview(env, projectId)
-    : await requireReviewRunByProject(env.risktrace_db, projectId)
+  let run = await requireReviewRunByProject(env.risktrace_db, projectId)
+
+  if (synchronize) {
+    run = isMockReviewRun(run)
+      ? await synchronizeProjectReviewWithMock(env, run)
+      : await synchronizeProjectReview(env, projectId)
+  }
+
   const [materialAnalysisAvailable, reportAvailable] = await Promise.all([
     reviewResultExists(env.risktrace_db, run.id, 'material_analysis'),
     reviewResultExists(env.risktrace_db, run.id, 'final_report'),
