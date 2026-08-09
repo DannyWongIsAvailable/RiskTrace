@@ -1,5 +1,34 @@
+import type { ProjectStage, ProjectStatus, RiskLevel } from './project'
 import type { StatusTone } from './ui'
 
+export interface DashboardSummary {
+  generatedAt: string
+  metrics: {
+    totalProjects: number
+    totalDocuments: number
+    completedReports: number
+    totalFindings: number
+    highRiskFindings: number
+    criticalRiskFindings: number
+  }
+  projectStatus: Record<ProjectStatus, number>
+  reportRiskDistribution: Record<RiskLevel, number>
+  findingRiskDistribution: Record<RiskLevel, number>
+  recentProjects: DashboardRecentProject[]
+}
+
+export interface DashboardRecentProject {
+  projectId: string
+  projectTitle: string
+  status: ProjectStatus
+  stage: ProjectStage
+  documentCount: number
+  overallRiskLevel: RiskLevel | null
+  findingCount: number
+  updatedAt: string
+}
+
+// 保留旧演示类型，避免历史 Mock 文件在清理前影响类型检查。
 export interface DashboardMetric {
   key: string
   label: string

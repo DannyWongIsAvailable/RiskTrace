@@ -5,6 +5,7 @@
 所有业务接口统一放在 `/api` 下，优先使用 REST 风格的资源名词：
 
 ```text
+GET    /api/dashboard/summary
 GET    /api/projects
 POST   /api/projects
 GET    /api/projects/:projectId
@@ -24,6 +25,26 @@ POST   /api/projects/:projectId/review/retry
 POST /api/projects/:projectId/uploads/complete
 POST /api/projects/:projectId/review/retry
 ```
+
+### 1.1 Dashboard 统计查询
+
+Dashboard 使用单一聚合查询接口：
+
+```text
+GET /api/dashboard/summary
+```
+
+该接口只读取现有业务数据，不创建新的统计表。响应聚合：
+
+- 采购项目总量与各项目状态数量；
+- 已确认上传的材料数量；
+- 已生成最终报告数量；
+- 最终报告中的风险事项总量、高风险与重大风险数量；
+- 报告总体风险等级分布；
+- 风险事项等级分布；
+- 最近更新的采购项目、材料数量、当前阶段、总体风险与风险事项数量。
+
+Dashboard 统计属于只读查询，响应默认 `Cache-Control: no-store`，不得通过读取接口推进审查状态或产生其他业务副作用。
 
 接口路径：
 

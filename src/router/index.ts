@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import { AppIcons } from '@/icons'
 import AppLayout from '@/layouts/AppLayout.vue'
+import DashboardView from '@/views/DashboardView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
 import ProjectCreateView from '@/views/ProjectCreateView.vue'
 import ProjectListView from '@/views/ProjectListView.vue'
@@ -17,7 +18,23 @@ const router = createRouter({
       children: [
         {
           path: '',
-          redirect: '/projects',
+          redirect: '/dashboard',
+        },
+        {
+          path: 'dashboard',
+          name: 'dashboard',
+          component: DashboardView,
+          meta: {
+            title: '审查总览',
+            description: '查看采购项目、审查进度与风险统计。',
+            navigation: {
+              group: 'main',
+              order: 10,
+              label: '审查总览',
+              icon: AppIcons.navigation.dashboard,
+              description: '项目进度与风险统计',
+            },
+          },
         },
         {
           path: 'projects',
@@ -28,7 +45,7 @@ const router = createRouter({
             description: '创建采购项目、上传材料并查看合规审查报告。',
             navigation: {
               group: 'main',
-              order: 10,
+              order: 20,
               icon: AppIcons.navigation.projects,
               description: '项目、材料与审查报告',
             },
