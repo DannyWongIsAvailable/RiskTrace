@@ -116,6 +116,7 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、Provider �
 - DeepSeek Harness Provider 负责 Harness HTTP 契约和运行状态归一化；
 - 一次审查运行持久化 `provider_name + provider_execute_id`，运行中的任务不会因默认 Provider 切换而串到另一平台；
 - 材料理解结果和最终报告仍属于同一次 Provider 执行中的不同业务输出。
+- 前端和业务 API 只暴露材料理解、审查阶段和报告等业务语义，不暴露或判断具体 Provider。
 
 ## 6. 目标页面与路由
 
@@ -124,13 +125,13 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、Provider �
 | `/dashboard` | 审查总览 | 展示项目状态、审查进度、报告与风险事项统计 |
 | `/projects` | 采购项目列表 | 查询项目和进入新建流程 |
 | `/projects/new` | 新建采购项目 | 填写项目标题并一次性上传材料 |
-| `/projects/:projectId/upload` | 项目材料与审查进度 | 上传材料、展示 Mock 分类并轮询报告状态 |
+| `/projects/:projectId/upload` | 项目材料与审查进度 | 上传材料、展示材料理解结果并轮询审查状态 |
 | `/projects/:projectId/report` | 合规审查报告 | 展示只读风险报告和关联文件 |
 | `/foundation` | 设计系统 | 仅开发环境使用的基础组件预览 |
 
 处置中心和规则中心不属于当前 Demo 范围，不应作为当前版本的业务导航或开发目标。
 
-当前仓库已经完成前端工程底座、审查总览与采购项目四个主流程页面、项目/上传/统计 API、D1/R2 读写、Mock 分阶段审查、Review Provider、工作流回调、结果校验和报告读取。
+当前仓库已经完成前端工程底座、审查总览与采购项目四个主流程页面、项目/上传/统计 API、D1/R2 读写、统一 Review Provider、审查回调、结果校验和报告读取。
 
 ## 7. 目录约定
 

@@ -50,7 +50,7 @@ onBeforeUnmount(() => controller.abort())
   <div class="rt-page rt-page-stack">
     <PageHeader
       title="新建采购项目"
-      description="当前 Demo 只采集项目标题，材料将在下一步一次性上传。"
+      description="填写采购项目标题后，在下一步一次性上传当前已有材料。"
       :breadcrumbs="[
         { label: '采购项目', to: { name: 'projects' } },
         { label: '新建采购项目' },
@@ -59,11 +59,11 @@ onBeforeUnmount(() => controller.abort())
 
     <InlineNotice
       title="自动审查流程"
-      description="上传完成后，系统会先返回 Mock 材料分类，再自动进入领域审查并生成 Mock 报告。"
+      description="上传完成后，系统会自动完成材料理解、领域审查和报告生成。"
       tone="primary"
     />
 
-    <BaseCard title="项目基本信息" description="项目标题由用户填写，AI 和 Mock 均不会覆盖。">
+    <BaseCard title="项目基本信息" description="项目标题由用户填写，自动审查过程不会修改。">
       <el-form
         ref="formRef"
         :model="form"

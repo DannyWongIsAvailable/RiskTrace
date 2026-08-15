@@ -120,9 +120,9 @@ export function getProjectReport(
   return http.get<ReviewReport>(`/api/projects/${projectId}/report`, { signal })
 }
 
-const R2_UPLOAD_TIMEOUT_MS = 5 * 60_000
+const MATERIAL_UPLOAD_TIMEOUT_MS = 5 * 60_000
 
-export function uploadFileToSignedUrl(
+export function uploadProjectMaterial(
   target: UploadSessionFile,
   file: File,
   onProgress: (progress: number) => void,
@@ -158,7 +158,7 @@ export function uploadFileToSignedUrl(
     }
 
     request.open(target.method, target.uploadUrl)
-    request.timeout = R2_UPLOAD_TIMEOUT_MS
+    request.timeout = MATERIAL_UPLOAD_TIMEOUT_MS
     Object.entries(target.headers).forEach(([name, value]) => request.setRequestHeader(name, value))
 
     request.upload.addEventListener('progress', (event) => {
@@ -171,13 +171,13 @@ export function uploadFileToSignedUrl(
         succeed()
         return
       }
-      fail('材料上传到对象存储失败', 'R2_UPLOAD_FAILED')
+      fail('材料上传失败', 'MATERIAL_UPLOAD_FAILED')
     })
     request.addEventListener('error', () =>
-      fail('材料上传网络异常', 'R2_UPLOAD_NETWORK_ERROR', 0),
+      fail('材料上传网络异常', 'MATERIAL_UPLOAD_NETWORK_ERROR', 0),
     )
     request.addEventListener('timeout', () =>
-      fail('材料上传超时，请检查网络后重试', 'R2_UPLOAD_TIMEOUT', 408),
+      fail('材料上传超时，请检查网络后重试', 'MATERIAL_UPLOAD_TIMEOUT', 408),
     )
     request.addEventListener('abort', () => fail('材料上传已取消', 'REQUEST_CANCELLED', 0))
 

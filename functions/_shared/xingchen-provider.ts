@@ -22,20 +22,23 @@ export class XingchenReviewProvider implements ReviewProvider {
   private readonly apiKey: string
   private readonly apiSecret: string
   private readonly flowId: string
+  private readonly callbackToken: string
 
   constructor(env: Env) {
     this.apiBaseUrl = (env.XFYUN_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '')
     const apiKey = env.XFYUN_API_KEY?.trim()
     const apiSecret = env.XFYUN_API_SECRET?.trim()
     const flowId = env.XFYUN_FLOW_ID_REVIEW?.trim()
+    const callbackToken = env.RISKTRACE_CALLBACK_TOKEN?.trim()
 
-    if (!apiKey || !apiSecret || !flowId) {
-      throw new AppError('WORKFLOW_NOT_CONFIGURED', '讯飞星辰工作流尚未完成配置', 500)
+    if (!apiKey || !apiSecret || !flowId || !callbackToken) {
+      throw new AppError('WORKFLOW_NOT_CONFIGURED', '合规审查服务尚未完成配置', 500)
     }
 
     this.apiKey = apiKey
     this.apiSecret = apiSecret
     this.flowId = flowId
+    this.callbackToken = callbackToken
   }
 
   async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
@@ -44,7 +47,7 @@ export class XingchenReviewProvider implements ReviewProvider {
       reviewRunId: input.reviewRunId,
       projectTitle: input.projectTitle,
       files: input.files,
-      callbackUrl: input.callback.url,
+      callbackUrl: input.callbackUrl,
     }
     const response = await this.post('/workflow/v1/async/chat/completions', {
       flow_id: this.flowId,
@@ -55,8 +58,8 @@ export class XingchenReviewProvider implements ReviewProvider {
         REVIEW_RUN_ID: input.reviewRunId,
         PROJECT_TITLE: input.projectTitle,
         FILES_JSON: JSON.stringify(input.files),
-        CALLBACK_URL: input.callback.url,
-        CALLBACK_TOKEN: input.callback.token,
+        CALLBACK_URL: input.callbackUrl,
+        CALLBACK_TOKEN: this.callbackToken,
         AGENT_USER_INPUT: JSON.stringify(workflowInput),
       },
     })
@@ -104,7 +107,7 @@ export class XingchenReviewProvider implements ReviewProvider {
       execute_id: executeId,
     })
     if (readNumber(response.code) !== 0) {
-      throw new AppError('WORKFLOW_CANCEL_FAILED', '工作流取消失败', 502)
+      throw new AppError('WORKFLOW_CANCEL_FAILED', '合规审查取消失败', 502)
     }
   }
 
@@ -124,13 +127,13 @@ export class XingchenReviewProvider implements ReviewProvider {
       })
 
       if (!response.ok) {
-        throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '工作流服务暂时不可用', 502)
+        throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '合规审查服务暂时不可用', 502)
       }
 
       const value: unknown = await response.json()
       const record = readObject(value)
       if (!record) {
-        throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', '工作流服务响应格式无效', 502)
+        throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', '合规审查服务响应格式无效', 502)
       }
 
       return record
@@ -139,10 +142,10 @@ export class XingchenReviewProvider implements ReviewProvider {
         throw error
       }
       if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new AppError('WORKFLOW_PROVIDER_TIMEOUT', '工作流服务响应超时', 504)
+        throw new AppError('WORKFLOW_PROVIDER_TIMEOUT', '合规审查服务响应超时', 504)
       }
 
-      throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '工作流服务暂时不可用', 502)
+      throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '合规审查服务暂时不可用', 502)
     } finally {
       clearTimeout(timeout)
     }

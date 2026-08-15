@@ -115,8 +115,8 @@ Cloudflare Pages Functions
 - 前端只通过 API 访问后端；
 - 前端不直接访问 D1、R2 或外部工作流；
 - 外部工作流平台通过 Provider 抽象接入，业务代码不得绑定特定 SDK；
-- Provider 通过 `REVIEW_PROVIDER` 统一选择，业务服务不得 import 具体供应商 Provider；
-- 非 Mock 模式上传完成后只调用一次 Provider `createRun`；
+- Provider 通过 `REVIEW_PROVIDER` 统一选择，业务服务不得 import、判断或特殊处理任何具体 Provider 实现；
+- 所有审查执行模式在上传完成后都只通过统一 Provider 接口调用一次 `createRun`；
 - 材料理解结果和最终报告属于同一 Provider 执行中的不同业务输出；
 - 外部服务输出必须再次经过后端校验；
 

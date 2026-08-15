@@ -11,7 +11,7 @@ import {
   getProject,
   getProjectMaterialAnalysis,
   getProjectReviewStatus,
-  uploadFileToSignedUrl,
+  uploadProjectMaterial,
 } from '@/api/modules'
 import { isApiError } from '@/api/request'
 import MaterialAnalysisPanel from '@/components/projects/MaterialAnalysisPanel.vue'
@@ -131,7 +131,7 @@ async function handleUpload(): Promise<void> {
         item.status = 'uploading'
         item.percentage = 0
         try {
-          await uploadFileToSignedUrl(
+          await uploadProjectMaterial(
             target,
             item.raw,
             (progress) => {
@@ -154,7 +154,7 @@ async function handleUpload(): Promise<void> {
     )
 
     await completeProjectUploads(projectId.value, controller.signal)
-    ElMessage.success('Mock 材料分类已生成，系统正在继续生成报告')
+    ElMessage.success('材料理解结果已生成，系统正在继续执行合规审查')
     uploadRef.value?.clearFiles()
     fileList.value = []
     project.value = await getProject(projectId.value, controller.signal)
@@ -162,7 +162,7 @@ async function handleUpload(): Promise<void> {
     schedulePoll()
   } catch (error) {
     if (isApiError(error) && error.code === 'REQUEST_CANCELLED') return
-    actionError.value = error instanceof Error ? error.message : '材料上传或 Mock 审查启动失败'
+    actionError.value = error instanceof Error ? error.message : '材料上传或合规审查启动失败'
   } finally {
     uploading.value = false
   }
@@ -219,10 +219,10 @@ function stageLabel(stage: ProjectStage): string {
     waiting_for_upload: '等待上传材料',
     uploading_files: '材料上传中',
     material_analysis_running: '正在理解和分类材料',
-    material_analysis_completed: 'Mock 材料分类已返回，正在继续审查',
-    domain_review_running: '领域 Agent Mock 审查中',
-    report_aggregating: '正在聚合风险并生成 Mock 报告',
-    report_completed: 'Mock 合规审查报告已生成',
+    material_analysis_completed: '材料理解结果已生成，正在继续审查',
+    domain_review_running: '正在执行领域合规审查',
+    report_aggregating: '正在聚合风险并生成合规审查报告',
+    report_completed: '合规审查报告已生成',
     failed: '合规审查失败',
   }
   return labels[stage]
@@ -239,7 +239,7 @@ onBeforeUnmount(() => {
   <div class="rt-page rt-page-stack">
     <PageHeader
       :title="project?.projectTitle ?? '上传项目材料'"
-      description="一次性上传当前已有材料；上传完成后先展示 Mock 分类，再自动生成 Mock 报告。"
+      description="一次性上传当前已有材料；上传完成后系统将自动执行材料理解、领域审查和报告生成。"
       :breadcrumbs="[
         { label: '采购项目', to: { name: 'projects' } },
         { label: '上传项目材料' },
@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
       <template #actions>
         <el-button @click="$router.push({ name: 'projects' })">返回项目列表</el-button>
         <el-button v-if="reportReady" type="primary" @click="router.push({ name: 'project-report', params: { projectId } })">
-          查看 Mock 报告
+          查看审查报告
         </el-button>
       </template>
     </PageHeader>
@@ -263,8 +263,8 @@ onBeforeUnmount(() => {
 
     <template v-else-if="project">
       <InlineNotice
-        title="Mock 分阶段演示"
-        description="系统不会在上传完成请求中直接返回最终报告，而是先保存材料分类，再通过状态轮询推进领域审查和报告聚合。"
+        title="自动审查流程"
+        description="材料上传完成后，系统会持续推进材料理解、领域审查和报告聚合，并在各阶段更新当前进度。"
         tone="primary"
       />
 
@@ -318,7 +318,7 @@ onBeforeUnmount(() => {
             :disabled="fileList.length === 0"
             @click="handleUpload"
           >
-            上传全部材料并开始 Mock 审查
+            上传全部材料并开始审查
           </el-button>
         </div>
       </BaseCard>
@@ -350,13 +350,13 @@ onBeforeUnmount(() => {
 
       <InlineNotice
         v-if="reportReady"
-        title="Mock 报告已生成"
-        description="材料分类仍保留在当前页面，可进入只读报告页面查看风险事项和关联文件。"
+        title="合规审查报告已生成"
+        description="材料理解结果仍保留在当前页面，可进入只读报告查看风险事项和关联文件。"
         tone="success"
       >
         <template #actions>
           <el-button type="primary" @click="router.push({ name: 'project-report', params: { projectId } })">
-            查看 Mock 报告
+            查看审查报告
           </el-button>
         </template>
       </InlineNotice>

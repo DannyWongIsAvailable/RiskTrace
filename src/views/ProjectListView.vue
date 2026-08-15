@@ -150,7 +150,7 @@ onBeforeUnmount(() => loadController?.abort())
   <div class="rt-page rt-page-stack">
     <PageHeader
       title="采购项目"
-      description="创建采购项目、上传材料并查看合规审查报告。当前报告由 Mock API 生成。"
+      description="创建采购项目、上传材料并持续查看自动合规审查进度与报告。"
     >
       <template #actions>
         <el-button :icon="AppIcons.action.refresh" :loading="loading" @click="handleRefresh">
@@ -163,8 +163,8 @@ onBeforeUnmount(() => loadController?.abort())
     </PageHeader>
 
     <InlineNotice
-      title="MVP 模式"
-      description="项目、文件和结果均通过真实 API 与 D1/R2 交互；上传完成后先展示 Mock 分类，再自动生成 Mock 报告。"
+      title="自动审查流程"
+      description="材料上传完成后，系统将自动执行材料理解、领域审查和报告生成，无需重复发起。"
       tone="neutral"
     />
 

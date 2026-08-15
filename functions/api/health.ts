@@ -1,4 +1,5 @@
 import { success } from '../_shared/http'
+import { isConfiguredReviewProviderAvailable } from '../_shared/review-provider-factory'
 import type { RequestData } from '../_shared/domain'
 
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async ({
@@ -27,12 +28,7 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async ({
         objectStorage: objectStorageConfigured
           ? 'configured'
           : 'unconfigured',
-        reviewProvider:
-          env.XFYUN_API_KEY &&
-          env.XFYUN_API_SECRET &&
-          env.XFYUN_FLOW_ID_REVIEW
-            ? 'configured'
-            : 'unconfigured',
+        reviewProvider: isConfiguredReviewProviderAvailable(env) ? 'configured' : 'unconfigured',
       },
       timestamp: new Date().toISOString(),
     },

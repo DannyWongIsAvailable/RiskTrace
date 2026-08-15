@@ -210,7 +210,7 @@ export async function confirmDocumentUpload(
   return markDocumentUploaded(env.risktrace_db, { projectId, documentId, now })
 }
 
-export async function createWorkflowFileList(
+export async function createReviewProviderFileList(
   env: Env,
   documents: DocumentRow[],
 ): Promise<
@@ -238,6 +238,9 @@ export async function createWorkflowFileList(
     })),
   )
 }
+
+/** @deprecated Use createReviewProviderFileList. */
+export const createWorkflowFileList = createReviewProviderFileList
 
 function assertProjectCanUpload(project: ProjectRow): void {
   if (!['draft', 'uploading'].includes(project.status)) {

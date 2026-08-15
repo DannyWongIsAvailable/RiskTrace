@@ -12,11 +12,12 @@ functions/_shared/review-provider.ts
 
 ```text
 ReviewProvider
+├─ MockReviewProvider
 ├─ XingchenReviewProvider
 └─ DeepSeekHarnessReviewProvider
 ```
 
-Demo Mock 仍由现有 Mock 审查服务提供，但入口同样由 `REVIEW_PROVIDER` 统一选择。
+本地演示实现同样实现 `ReviewProvider`，与远程运行时走完全一致的业务编排路径。`review-service.ts` 不允许判断或特殊处理具体 Provider。
 
 ## 2. Provider 选择
 
@@ -54,10 +55,7 @@ interface CreateReviewRunInput {
     fileUrl: string
     parseStrategy: 'ocr' | 'table' | 'text'
   }>
-  callback: {
-    url: string
-    token: string
-  }
+  callbackUrl: string
 }
 ```
 
@@ -78,7 +76,7 @@ interrupted
 failed
 ```
 
-业务层不允许构造供应商专有参数名、鉴权头或 endpoint。
+业务层不允许构造供应商专有参数名、鉴权头或 endpoint。回调鉴权令牌也由具体 Provider 从运行环境读取并封装，业务编排只提供统一回调地址。
 
 ## 4. 运行时 Provider 绑定
 
@@ -94,7 +92,7 @@ provider_name
 provider_name + provider_execute_id
 ```
 
-后续轮询使用该运行保存的 Provider，而不是重新读取当前默认 Provider。这样可以安全地完成以下部署切换：
+后续轮询由 Provider Factory 根据该运行保存的 Provider 重新创建对应实现，而不是重新读取当前默认 Provider。这样可以安全地完成以下部署切换：
 
 ```text
 旧运行：xingchen + execute_xxx     -> 继续查询 Xingchen

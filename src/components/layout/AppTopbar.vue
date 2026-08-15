@@ -26,13 +26,13 @@ const pageTitle = computed(() => {
       </button>
       <div class="app-topbar__page-context">
         <span class="app-topbar__page-title">{{ pageTitle }}</span>
-        <span class="app-topbar__environment">RiskTrace MVP</span>
+        <span class="app-topbar__environment">采购合规审查</span>
       </div>
     </div>
 
     <div class="app-topbar__mode">
       <span class="app-topbar__mode-dot" />
-      <span>Mock 报告模式</span>
+      <span>自动审查</span>
     </div>
   </header>
 </template>

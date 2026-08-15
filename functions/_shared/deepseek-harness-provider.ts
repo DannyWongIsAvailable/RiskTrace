@@ -21,14 +21,17 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
 
   private readonly baseUrl: string
   private readonly apiKey: string | null
+  private readonly callbackToken: string
 
   constructor(env: Env) {
     this.baseUrl = env.DEEPSEEK_HARNESS_BASE_URL?.trim().replace(/\/$/, '') ?? ''
     this.apiKey = env.DEEPSEEK_HARNESS_API_KEY?.trim() || null
+    const callbackToken = env.RISKTRACE_CALLBACK_TOKEN?.trim()
 
-    if (!this.baseUrl) {
-      throw new AppError('WORKFLOW_NOT_CONFIGURED', 'DeepSeek Harness 尚未完成配置', 500)
+    if (!this.baseUrl || !callbackToken) {
+      throw new AppError('WORKFLOW_NOT_CONFIGURED', '合规审查服务尚未完成配置', 500)
     }
+    this.callbackToken = callbackToken
   }
 
   async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
@@ -42,16 +45,16 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       },
       files: input.files,
       callback: {
-        url: input.callback.url,
+        url: input.callbackUrl,
         headers: {
-          'X-RiskTrace-Callback-Token': input.callback.token,
+          'X-RiskTrace-Callback-Token': this.callbackToken,
         },
       },
     })
 
     const executeId = readRunId(response)
     if (!executeId) {
-      throw new AppError('WORKFLOW_START_FAILED', 'DeepSeek Harness 未返回运行编号', 502)
+      throw new AppError('WORKFLOW_START_FAILED', '合规审查服务未返回运行编号', 502)
     }
 
     const initialResult = normalizeRunResult(response)
@@ -92,7 +95,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       })
 
       if (!response.ok) {
-        throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', 'DeepSeek Harness 暂时不可用', 502)
+        throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '合规审查服务暂时不可用', 502)
       }
 
       const responseText = await response.text()
@@ -102,7 +105,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
         }
         throw new AppError(
           'WORKFLOW_PROVIDER_INVALID_RESPONSE',
-          'DeepSeek Harness 响应格式无效',
+          '合规审查服务响应格式无效',
           502,
         )
       }
@@ -113,7 +116,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       } catch {
         throw new AppError(
           'WORKFLOW_PROVIDER_INVALID_RESPONSE',
-          'DeepSeek Harness 响应格式无效',
+          '合规审查服务响应格式无效',
           502,
         )
       }
@@ -121,7 +124,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       if (!record) {
         throw new AppError(
           'WORKFLOW_PROVIDER_INVALID_RESPONSE',
-          'DeepSeek Harness 响应格式无效',
+          '合规审查服务响应格式无效',
           502,
         )
       }
@@ -131,9 +134,9 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
         throw error
       }
       if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new AppError('WORKFLOW_PROVIDER_TIMEOUT', 'DeepSeek Harness 响应超时', 504)
+        throw new AppError('WORKFLOW_PROVIDER_TIMEOUT', '合规审查服务响应超时', 504)
       }
-      throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', 'DeepSeek Harness 暂时不可用', 502)
+      throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '合规审查服务暂时不可用', 502)
     } finally {
       clearTimeout(timeout)
     }
@@ -148,7 +151,7 @@ function normalizeRunResult(record: Record<string, unknown>): ProviderRunResult 
   const content = stringifyProviderContent(output)
 
   if (['queued', 'pending', 'starting', 'running', 'in_progress'].includes(status)) {
-    return { state: 'running' }
+    return { state: 'running', ...(content ? { content } : {}) }
   }
   if (['success', 'succeeded', 'completed', 'complete'].includes(status)) {
     return { state: 'succeeded', content, providerMessage }
@@ -160,7 +163,7 @@ function normalizeRunResult(record: Record<string, unknown>): ProviderRunResult 
     return { state: 'failed', providerMessage }
   }
 
-  throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', 'DeepSeek Harness 返回了未知运行状态', 502)
+  throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', '合规审查服务返回了未知运行状态', 502)
 }
 
 function readRunId(record: Record<string, unknown>): string | null {

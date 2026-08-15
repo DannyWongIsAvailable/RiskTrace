@@ -23,8 +23,8 @@ const completenessMeta = computed<{ label: string; tone: StatusTone }>(() => {
 <template>
   <section class="material-analysis-panel">
     <SectionHeader
-      title="Mock 材料分类"
-      description="分类结果已先返回；系统会继续自动生成 Mock 合规审查报告。"
+      title="材料理解结果"
+      description="材料理解结果已保存；系统将继续执行领域审查并生成合规审查报告。"
     />
 
     <div class="material-analysis-panel__summary-grid">
@@ -46,7 +46,7 @@ const completenessMeta = computed<{ label: string; tone: StatusTone }>(() => {
     <BaseCard
       v-if="analysis.completeness.missingMaterials.length"
       title="可能缺少的材料"
-      description="该判断由 Mock 文件名分类生成，不代表已解析正文。"
+      description="请结合材料原文复核完整性判断与缺口信息。"
     >
       <div class="material-analysis-panel__tags">
         <el-tag
@@ -73,7 +73,7 @@ const completenessMeta = computed<{ label: string; tone: StatusTone }>(() => {
             <el-tag effect="plain">{{ row.category }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="Mock 摘要" min-width="280" prop="summary" />
+        <el-table-column label="内容摘要" min-width="280" prop="summary" />
       </el-table>
     </BaseCard>
   </section>

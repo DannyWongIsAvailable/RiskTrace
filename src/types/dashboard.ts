@@ -28,7 +28,7 @@ export interface DashboardRecentProject {
   updatedAt: string
 }
 
-// 保留旧演示类型，避免历史 Mock 文件在清理前影响类型检查。
+// 保留旧演示类型，待历史演示数据完成清理后统一移除。
 export interface DashboardMetric {
   key: string
   label: string

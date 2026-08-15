@@ -94,7 +94,7 @@ onBeforeUnmount(() => controller.abort())
   <div class="rt-page rt-page-stack">
     <PageHeader
       :title="project?.projectTitle ?? report?.projectTitle ?? '合规审查报告'"
-      description="只读报告。当前内容由后端 Mock API 生成，用于验证 MVP 全链路。"
+      description="只读合规审查报告，集中展示风险事项、关联材料与分析限制。"
       :breadcrumbs="[
         { label: '采购项目', to: { name: 'projects' } },
         { label: '合规审查报告' },
@@ -115,15 +115,15 @@ onBeforeUnmount(() => controller.abort())
 
     <template v-else-if="report">
       <InlineNotice
-        title="Mock 报告说明"
-        description="本报告未解析文件正文，不能作为真实合规决策依据。后续接入星辰工作流时，可保持相同 API 与页面结构。"
+        title="报告使用说明"
+        description="请结合报告中的分析限制、关联材料和原始文件内容复核风险结论。"
         tone="warning"
       />
 
       <BaseCard
         v-if="projectDocuments.length"
         title="项目材料"
-        description="删除材料会立即移除数据库记录、使当前报告失效，并在后台清理 R2 对象。"
+        description="删除材料后，当前审查报告将立即失效，相关文件也会进入后台清理流程。"
       >
         <div class="project-report__document-list">
           <div
@@ -178,7 +178,7 @@ onBeforeUnmount(() => controller.abort())
       <BaseCard
         v-if="report.completeness.missingMaterials.length"
         title="缺失材料"
-        description="建议在接入正式工作流前补充以下材料。"
+        description="建议补充以下材料后重新执行合规审查。"
       >
         <div class="project-report__tag-list">
           <el-tag v-for="item in report.completeness.missingMaterials" :key="item" type="warning" effect="light">
@@ -239,7 +239,7 @@ onBeforeUnmount(() => controller.abort())
     <ConfirmActionDialog
       v-model="deleteDialogOpen"
       title="删除项目材料"
-      :description="`删除“${documentPendingDelete?.fileName ?? ''}”后，数据库记录将立即删除，R2 远端文件将在后台清理，当前审查报告也会失效。`"
+      :description="`删除“${documentPendingDelete?.fileName ?? ''}”后，材料记录将立即删除，远端文件将在后台清理，当前审查报告也会失效。`"
       confirm-text="删除文件"
       confirm-type="danger"
       :loading="Boolean(deletingDocumentId)"

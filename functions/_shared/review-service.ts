@@ -1,4 +1,5 @@
 import { applyMaterialAnalysisToDocuments, listDocuments } from './document-repository'
+import { REVIEW_STAGES } from './domain'
 import type {
   MaterialAnalysis,
   ProjectRow,
@@ -8,13 +9,8 @@ import type {
   ReviewStatusResponse,
 } from './domain'
 import { AppError } from './errors'
-import { createWorkflowFileList } from './file-service'
+import { createReviewProviderFileList } from './file-service'
 import { createId } from './ids'
-import {
-  isMockReviewRun,
-  startProjectReviewWithMock,
-  synchronizeProjectReviewWithMock,
-} from './mock-review-service'
 import { requireProject } from './project-repository'
 import {
   attachProviderExecuteId,
@@ -26,11 +22,8 @@ import {
   requireReviewRunByProject,
   updateReviewState,
 } from './review-repository'
-import {
-  createReviewProvider,
-  getConfiguredReviewProviderName,
-} from './review-provider-factory'
-import type { ExternalReviewProviderName, ProviderRunResult } from './review-provider'
+import { createConfiguredReviewProvider, createReviewProvider } from './review-provider-factory'
+import type { ProviderRunResult, ReviewProvider } from './review-provider'
 import {
   normalizeMaterialAnalysis,
   normalizeReviewReport,
@@ -44,10 +37,7 @@ export async function startProjectReview(
   env: Env,
   input: { projectId: string; requestOrigin: string },
 ): Promise<ReviewRunRow> {
-  const providerName = getConfiguredReviewProviderName(env)
-  if (providerName === 'mock') {
-    return startProjectReviewWithMock(env, input.projectId)
-  }
+  const provider = createConfiguredReviewProvider(env)
 
   const project = await requireProject(env.risktrace_db, input.projectId)
   const documents = await requireUploadedDocuments(env, input.projectId)
@@ -65,7 +55,7 @@ export async function startProjectReview(
     throw new AppError('REVIEW_RETRY_REQUIRED', '合规审查已失败，请使用重试接口', 409)
   }
 
-  const claimed = await claimReviewRunStart(env.risktrace_db, run.id, providerName, now)
+  const claimed = await claimReviewRunStart(env.risktrace_db, run.id, provider.name, now)
   if (!claimed) {
     return requireReviewRunByProject(env.risktrace_db, input.projectId)
   }
@@ -73,7 +63,7 @@ export async function startProjectReview(
   try {
     return await createProviderRun(
       env,
-      providerName,
+      provider,
       project,
       run.id,
       documents,
@@ -84,7 +74,7 @@ export async function startProjectReview(
       reviewRunId: run.id,
       projectId: input.projectId,
       code: error instanceof AppError ? error.code : 'WORKFLOW_START_FAILED',
-      message: '合规审查工作流启动失败',
+      message: '合规审查启动失败',
     })
     throw error
   }
@@ -105,18 +95,14 @@ export async function retryProjectReview(
     throw new AppError('RETRY_LIMIT_EXCEEDED', '合规审查已达到最大重试次数', 409)
   }
 
-  const providerName = getConfiguredReviewProviderName(env)
+  const provider = createConfiguredReviewProvider(env)
   const now = new Date().toISOString()
   await prepareReviewRetry(env.risktrace_db, {
     reviewRunId: run.id,
     projectId: input.projectId,
     now,
   })
-  if (providerName === 'mock') {
-    return startProjectReviewWithMock(env, input.projectId)
-  }
-
-  const claimed = await claimReviewRunStart(env.risktrace_db, run.id, providerName, now)
+  const claimed = await claimReviewRunStart(env.risktrace_db, run.id, provider.name, now)
   if (!claimed) {
     throw new AppError('REVIEW_ALREADY_RUNNING', '合规审查正在运行', 409)
   }
@@ -124,7 +110,7 @@ export async function retryProjectReview(
   try {
     return await createProviderRun(
       env,
-      providerName,
+      provider,
       project,
       run.id,
       documents,
@@ -135,7 +121,7 @@ export async function retryProjectReview(
       reviewRunId: run.id,
       projectId: input.projectId,
       code: error instanceof AppError ? error.code : 'WORKFLOW_START_FAILED',
-      message: '合规审查工作流重试启动失败',
+      message: '合规审查重试启动失败',
     })
     throw error
   }
@@ -147,8 +133,7 @@ export async function synchronizeProjectReview(env: Env, projectId: string): Pro
     return run
   }
 
-  const providerName = resolveExternalReviewProviderName(run)
-  const provider = createReviewProvider(env, providerName)
+  const provider = createReviewProvider(env, run.provider_name)
   const providerResult = await provider.getRun(run.provider_execute_id)
   await applyProviderRunResult(env, run, providerResult)
 
@@ -163,9 +148,7 @@ export async function getReviewStatus(
   let run = await requireReviewRunByProject(env.risktrace_db, projectId)
 
   if (synchronize) {
-    run = isMockReviewRun(run)
-      ? await synchronizeProjectReviewWithMock(env, run)
-      : await synchronizeProjectReview(env, projectId)
+    run = await synchronizeProjectReview(env, projectId)
   }
 
   const [materialAnalysisAvailable, reportAvailable] = await Promise.all([
@@ -212,7 +195,7 @@ export async function processProviderCallback(
 ): Promise<ReviewRunRow> {
   const run = await requireReviewRunById(env.risktrace_db, input.reviewRunId)
   if (!run.provider_execute_id || run.provider_execute_id !== input.executeId) {
-    throw new AppError('STALE_PROVIDER_CALLBACK', '工作流回调不属于当前有效执行', 409)
+    throw new AppError('STALE_PROVIDER_CALLBACK', '审查回调不属于当前有效执行', 409)
   }
   if (run.status !== 'reviewing') {
     return run
@@ -226,7 +209,7 @@ export async function processProviderCallback(
       reviewRunId: run.id,
       projectId: run.project_id,
       code: input.failure?.code ?? 'WORKFLOW_EXECUTION_FAILED',
-      message: input.failure?.message ?? '合规审查工作流执行失败',
+      message: input.failure?.message ?? '合规审查执行失败',
     })
     return requireReviewRunById(env.risktrace_db, run.id)
   }
@@ -245,7 +228,7 @@ export async function processProviderCallback(
       'material_analysis',
     )
     if (!materialAnalysisAvailable) {
-      throw new AppError('WORKFLOW_OUTPUT_INVALID', '最终报告回调缺少已保存的材料理解结果', 422)
+      throw new AppError('WORKFLOW_OUTPUT_INVALID', '最终报告缺少已保存的材料理解结果', 422)
     }
     const report = normalizeReviewReport(input.finalReport, project, documents)
     await persistFinalReport(env, run, report)
@@ -256,29 +239,20 @@ export async function processProviderCallback(
 
 async function createProviderRun(
   env: Env,
-  providerName: ExternalReviewProviderName,
+  provider: ReviewProvider,
   project: ProjectRow,
   reviewRunId: string,
   documents: Awaited<ReturnType<typeof listDocuments>>,
   requestOrigin: string,
 ): Promise<ReviewRunRow> {
-  const callbackToken = env.RISKTRACE_CALLBACK_TOKEN?.trim()
-  if (!callbackToken) {
-    throw new AppError('CALLBACK_NOT_CONFIGURED', '工作流回调鉴权尚未完成配置', 500)
-  }
-
-  const files = await createWorkflowFileList(env, documents)
+  const files = await createReviewProviderFileList(env, documents)
   const callbackUrl = `${requestOrigin.replace(/\/$/, '')}/internal/provider/callback`
-  const provider = createReviewProvider(env, providerName)
   const providerRun = await provider.createRun({
     projectId: project.id,
     reviewRunId,
     projectTitle: project.title,
     files,
-    callback: {
-      url: callbackUrl,
-      token: callbackToken,
-    },
+    callbackUrl,
   })
   const now = new Date().toISOString()
   try {
@@ -309,27 +283,12 @@ async function applyProviderRunResult(
   run: ReviewRunRow,
   providerResult: ProviderRunResult,
 ): Promise<void> {
-  if (providerResult.state === 'running') {
-    if (run.provider_status !== 'running') {
-      await updateReviewState(env.risktrace_db, {
-        reviewRunId: run.id,
-        projectId: run.project_id,
-        status: 'reviewing',
-        stage: run.stage,
-        providerStatus: 'running',
-        progress: run.progress,
-        now: new Date().toISOString(),
-      })
-    }
-    return
-  }
-
   if (providerResult.state === 'interrupted') {
     await markReviewFailed(env, {
       reviewRunId: run.id,
       projectId: run.project_id,
       code: 'WORKFLOW_INTERRUPTED',
-      message: '工作流进入了当前 Demo 不支持的人工问答节点',
+      message: '审查执行进入了当前流程不支持的人工交互节点',
       providerStatus: 'interrupt',
     })
     return
@@ -340,54 +299,98 @@ async function applyProviderRunResult(
       reviewRunId: run.id,
       projectId: run.project_id,
       code: 'WORKFLOW_EXECUTION_FAILED',
-      message: '合规审查工作流执行失败',
+      message: '合规审查执行失败',
     })
     return
   }
 
+  if (providerResult.state === 'running') {
+    if (providerResult.content?.trim()) {
+      try {
+        await persistProviderOutput(env, run, providerResult.content, false)
+      } catch {
+        // Running providers may expose partial/non-final output. Ignore data that does not yet
+        // satisfy the stable RiskTrace result contract and keep polling the same execution.
+      }
+    }
+
+    const currentRun = await requireReviewRunById(env.risktrace_db, run.id)
+    if (currentRun.status === 'reviewing' && currentRun.provider_status !== 'running') {
+      await updateReviewState(env.risktrace_db, {
+        reviewRunId: currentRun.id,
+        projectId: currentRun.project_id,
+        status: 'reviewing',
+        stage: currentRun.stage,
+        providerStatus: 'running',
+        progress: currentRun.progress,
+        now: new Date().toISOString(),
+      })
+    }
+    return
+  }
+
   try {
-    await persistProviderSuccess(env, run, providerResult.content ?? '')
+    await persistProviderOutput(env, run, providerResult.content ?? '', true)
   } catch (error) {
     await markReviewFailed(env, {
       reviewRunId: run.id,
       projectId: run.project_id,
       code: error instanceof AppError ? error.code : 'WORKFLOW_OUTPUT_INVALID',
-      message: '工作流结果校验失败',
+      message: '审查结果校验失败',
     })
   }
 }
 
-function resolveExternalReviewProviderName(run: ReviewRunRow): ExternalReviewProviderName {
-  // Legacy runs created before provider_name existed were Xingchen executions.
-  const providerName = run.provider_name ?? 'xingchen'
-  if (providerName === 'mock') {
-    throw new AppError('WORKFLOW_PROVIDER_INVALID_STATE', 'Mock 审查不应进入外部 Provider 同步', 500)
-  }
-  return providerName
-}
-
-async function persistProviderSuccess(env: Env, run: ReviewRunRow, content: string): Promise<void> {
+async function persistProviderOutput(
+  env: Env,
+  run: ReviewRunRow,
+  content: string,
+  requireFinalReport: boolean,
+): Promise<void> {
   const project = await requireProject(env.risktrace_db, run.project_id)
   const documents = await listDocuments(env.risktrace_db, run.project_id)
   const output = parseProviderOutput(content)
+  const outputStage = resolveProviderOutputStage(output.stage)
   const rawOutputObjectKey = await storeRawProviderOutput(env, run, content)
+  let materialAnalysisAvailable = await reviewResultExists(
+    env.risktrace_db,
+    run.id,
+    'material_analysis',
+  )
 
   if (output.materialAnalysis !== undefined) {
     const analysis = normalizeMaterialAnalysis(output.materialAnalysis, project, documents)
-    await persistMaterialAnalysis(env, run, analysis, 'domain_review_running', rawOutputObjectKey)
-  }
-  if (output.finalReport === undefined) {
-    throw new AppError('WORKFLOW_OUTPUT_INVALID', '工作流完成但未返回最终报告', 502)
-  }
-  const materialAnalysisAvailable =
-    output.materialAnalysis !== undefined ||
-    (await reviewResultExists(env.risktrace_db, run.id, 'material_analysis'))
-  if (!materialAnalysisAvailable) {
-    throw new AppError('WORKFLOW_OUTPUT_INVALID', '工作流完成但未保存材料理解结果', 502)
+    await persistMaterialAnalysis(
+      env,
+      run,
+      analysis,
+      outputStage ?? 'material_analysis_completed',
+      rawOutputObjectKey,
+    )
+    materialAnalysisAvailable = true
+  } else if (outputStage && outputStage !== 'report_completed' && outputStage !== 'failed') {
+    const currentRun = await requireReviewRunById(env.risktrace_db, run.id)
+    await updateRunningStage(env, currentRun, outputStage)
   }
 
-  const report = normalizeReviewReport(output.finalReport, project, documents)
-  await persistFinalReport(env, run, report, rawOutputObjectKey)
+  if (output.finalReport !== undefined) {
+    if (!materialAnalysisAvailable) {
+      throw new AppError('WORKFLOW_OUTPUT_INVALID', '审查执行完成但未保存材料理解结果', 502)
+    }
+
+    const report = normalizeReviewReport(output.finalReport, project, documents)
+    await persistFinalReport(env, run, report, rawOutputObjectKey)
+    return
+  }
+
+  if (requireFinalReport) {
+    throw new AppError('WORKFLOW_OUTPUT_INVALID', '审查执行完成但未返回最终报告', 502)
+  }
+}
+
+function resolveProviderOutputStage(stage: string | undefined): ReviewStage | undefined {
+  if (!stage) return undefined
+  return REVIEW_STAGES.includes(stage as ReviewStage) ? (stage as ReviewStage) : undefined
 }
 
 async function persistMaterialAnalysis(
@@ -592,9 +595,9 @@ function stageMessage(stage: ReviewStage): string {
     case 'material_analysis_running':
       return '正在理解和分类材料'
     case 'material_analysis_completed':
-      return '材料理解结果已保存，同一工作流继续审查'
+      return '材料理解结果已保存，正在继续审查'
     case 'domain_review_running':
-      return '领域 Agent 正在执行合规审查'
+      return '正在执行领域合规审查'
     case 'report_aggregating':
       return '正在聚合风险并生成报告'
     case 'report_completed':

@@ -224,9 +224,9 @@ onBeforeUnmount(() => loadController?.abort())
 <template>
   <div class="rt-page rt-page-stack">
     <PageHeader
-      eyebrow="RiskTrace Demo"
+      eyebrow="RiskTrace"
       title="审查总览"
-      description="集中查看采购项目、自动合规审查进度与已生成报告中的风险统计，数据直接来自当前 D1 业务记录。"
+      description="集中查看采购项目、自动合规审查进度与已生成报告中的风险统计。"
     >
       <template #actions>
         <el-button
@@ -263,7 +263,7 @@ onBeforeUnmount(() => loadController?.abort())
       />
 
       <InlineNotice
-        title="Demo 数据口径"
+        title="统计口径"
         description="统计范围为当前数据库中的全部采购项目；风险事项和风险等级仅统计已经生成最终报告的项目。"
         tone="neutral"
       />

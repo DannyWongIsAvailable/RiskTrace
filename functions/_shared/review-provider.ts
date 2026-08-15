@@ -1,7 +1,6 @@
 export const REVIEW_PROVIDER_NAMES = ['mock', 'xingchen', 'deepseek-harness'] as const
 
 export type ReviewProviderName = (typeof REVIEW_PROVIDER_NAMES)[number]
-export type ExternalReviewProviderName = Exclude<ReviewProviderName, 'mock'>
 
 export interface ReviewProviderFile {
   documentId: string
@@ -16,14 +15,15 @@ export interface CreateReviewRunInput {
   reviewRunId: string
   projectTitle: string
   files: ReviewProviderFile[]
-  callback: {
-    url: string
-    token: string
-  }
+  callbackUrl: string
 }
 
 export interface ProviderRunResult {
   state: 'running' | 'succeeded' | 'interrupted' | 'failed'
+  /**
+   * Provider-neutral review output. It may contain an intermediate materialAnalysis while the run
+   * is still running, or the final report once the run succeeds.
+   */
   content?: string
   providerMessage?: string
 }
@@ -34,13 +34,13 @@ export interface ProviderRun {
 }
 
 /**
- * Stable boundary between RiskTrace review orchestration and an external agent/workflow runtime.
+ * Stable boundary between RiskTrace review orchestration and any review execution runtime.
  *
- * Provider implementations own vendor-specific authentication, request envelopes, endpoint paths
- * and response normalization. The review service only sees this contract.
+ * Concrete implementations own provider selection details, authentication, request envelopes,
+ * endpoint paths and response normalization. Business orchestration only depends on this contract.
  */
 export interface ReviewProvider {
-  readonly name: ExternalReviewProviderName
+  readonly name: ReviewProviderName
   createRun(input: CreateReviewRunInput): Promise<ProviderRun>
   getRun(executeId: string): Promise<ProviderRunResult>
   cancelRun(executeId: string): Promise<void>

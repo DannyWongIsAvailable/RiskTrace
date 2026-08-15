@@ -1,32 +1,20 @@
-import {
-  applyMaterialAnalysisToDocuments,
-  listDocuments,
-} from './document-repository'
 import type {
-  DocumentRow,
   MaterialAnalysis,
   MaterialCategory,
   ReviewReport,
-  ReviewRunRow,
   RiskLevel,
 } from './domain'
 import { AppError } from './errors'
 import { createId } from './ids'
-import { requireProject } from './project-repository'
-import {
-  claimReviewRunStart,
-  createOrGetReviewRun,
-  markMaterialAnalysisSaved,
-  requireReviewRunById,
-  updateReviewState,
-} from './review-repository'
-import {
-  findReviewResult,
-  reviewResultExists,
-  upsertReviewResult,
-} from './result-repository'
+import type {
+  CreateReviewRunInput,
+  ProviderRun,
+  ProviderRunResult,
+  ReviewProvider,
+  ReviewProviderFile,
+} from './review-provider'
+import { findReviewResult } from './result-repository'
 
-const MOCK_SCHEMA_VERSION = 'mock-v2'
 const DOMAIN_REVIEW_DELAY_MS = 2_000
 const REPORT_AGGREGATION_DELAY_MS = 4_000
 const REPORT_COMPLETION_DELAY_MS = 6_000
@@ -51,154 +39,109 @@ const CATEGORY_PATTERNS: Array<{
   { category: '发票与付款', pattern: /(发票|付款|支付|收款|请款|报销)/i },
 ]
 
-function now(): string {
-  return new Date().toISOString()
-}
+/**
+ * Local deterministic ReviewProvider used for development and demonstrations.
+ *
+ * It implements exactly the same provider contract as remote runtimes. Review orchestration does
+ * not import, branch on, or otherwise special-case this implementation.
+ */
+export class MockReviewProvider implements ReviewProvider {
+  readonly name = 'mock' as const
 
-export function isMockReviewRun(run: ReviewRunRow): boolean {
-  return (
-    run.status === 'reviewing' &&
-    (run.provider_name === 'mock' ||
-      (run.provider_name === null &&
-        run.provider_execute_id === null &&
-        run.material_analysis_saved_at !== null)) &&
-    run.provider_status === 'running' &&
-    run.material_analysis_saved_at !== null
-  )
-}
+  constructor(private readonly env: Env) {}
 
-export async function startProjectReviewWithMock(
-  env: Env,
-  projectId: string,
-): Promise<ReviewRunRow> {
-  const project = await requireProject(env.risktrace_db, projectId)
-  const documents = await requireUploadedDocuments(env, projectId)
-  const reviewRun = await createOrGetReviewRun(env.risktrace_db, {
-    id: createId('review'),
-    projectId,
-    now: now(),
-  })
-
-  if (reviewRun.status === 'completed') {
-    return reviewRun
-  }
-  if (reviewRun.provider_name === 'mock' && reviewRun.material_analysis_saved_at) {
-    return reviewRun
-  }
-  if (reviewRun.status === 'failed') {
-    throw new AppError('REVIEW_RETRY_REQUIRED', '合规审查已失败，请使用重试接口', 409)
-  }
-
-  const timestamp = now()
-  const claimed = await claimReviewRunStart(env.risktrace_db, reviewRun.id, 'mock', timestamp)
-  if (!claimed) {
-    return requireReviewRunById(env.risktrace_db, reviewRun.id)
-  }
-
-  try {
-    const materialAnalysis = buildMockMaterialAnalysis(project.title, documents)
-
-    await upsertReviewResult(env.risktrace_db, {
-      reviewRunId: reviewRun.id,
-      resultType: 'material_analysis',
-      schemaVersion: MOCK_SCHEMA_VERSION,
-      result: materialAnalysis,
-      now: timestamp,
-    })
-    await applyMaterialAnalysisToDocuments(
-      env.risktrace_db,
-      projectId,
-      materialAnalysis,
-      timestamp,
-    )
-    await markMaterialAnalysisSaved(env.risktrace_db, {
-      reviewRunId: reviewRun.id,
-      projectId,
-      now: timestamp,
-    })
-  } catch (error) {
-    const failedAt = now()
-    await updateReviewState(env.risktrace_db, {
-      reviewRunId: reviewRun.id,
-      projectId,
-      status: 'failed',
-      stage: 'failed',
-      providerStatus: 'failed',
-      progress: 0,
-      errorCode: error instanceof AppError ? error.code : 'MOCK_REVIEW_FAILED',
-      errorMessage: 'Mock 合规审查执行失败',
-      now: failedAt,
-      finishedAt: failedAt,
-    })
-    throw error
-  }
-
-  return requireReviewRunById(env.risktrace_db, reviewRun.id)
-}
-
-export async function synchronizeProjectReviewWithMock(
-  env: Env,
-  run: ReviewRunRow,
-): Promise<ReviewRunRow> {
-  if (!isMockReviewRun(run) || !run.material_analysis_saved_at) {
-    return run
-  }
-
-  const savedAt = Date.parse(run.material_analysis_saved_at)
-  if (Number.isNaN(savedAt)) {
-    throw new AppError('STORED_RESULT_INVALID', 'Mock 材料理解完成时间无效', 500)
-  }
-
-  const elapsedMs = Date.now() - savedAt
-  const timestamp = now()
-
-  if (elapsedMs >= REPORT_COMPLETION_DELAY_MS) {
-    await completeMockReport(env, run, timestamp)
-  } else if (
-    elapsedMs >= REPORT_AGGREGATION_DELAY_MS &&
-    run.stage !== 'report_aggregating'
-  ) {
-    await updateReviewState(env.risktrace_db, {
-      reviewRunId: run.id,
-      projectId: run.project_id,
-      status: 'reviewing',
-      stage: 'report_aggregating',
-      providerStatus: 'running',
-      progress: 85,
-      now: timestamp,
-    })
-  } else if (
-    elapsedMs >= DOMAIN_REVIEW_DELAY_MS &&
-    run.stage === 'material_analysis_completed'
-  ) {
-    await updateReviewState(env.risktrace_db, {
-      reviewRunId: run.id,
-      projectId: run.project_id,
-      status: 'reviewing',
-      stage: 'domain_review_running',
-      providerStatus: 'running',
-      progress: 65,
-      now: timestamp,
-    })
-  }
-
-  return requireReviewRunById(env.risktrace_db, run.id)
-}
-
-function buildMockMaterialAnalysis(
-  projectTitle: string,
-  documents: DocumentRow[],
-): MaterialAnalysis {
-  const materials = documents.map((document) => {
-    const fileStem = document.original_name.replace(/\.[^.]+$/, '').trim() || document.original_name
-    const category = classifyMaterial(document.original_name)
+  async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
+    const executeId = createMockExecuteId(input.reviewRunId)
+    const materialAnalysis = buildMaterialAnalysis(input.projectTitle, input.files)
 
     return {
-      documentId: document.id,
-      fileName: document.original_name,
+      executeId,
+      initialResult: {
+        state: 'running',
+        content: JSON.stringify({
+          stage: 'material_analysis_completed',
+          materialAnalysis,
+        }),
+      },
+    }
+  }
+
+  async getRun(executeId: string): Promise<ProviderRunResult> {
+    const execution = parseMockExecuteId(executeId)
+    const materialAnalysis = await this.readMaterialAnalysis(execution.reviewRunId)
+    const elapsedMs = Date.now() - execution.startedAt
+
+    if (elapsedMs >= REPORT_COMPLETION_DELAY_MS) {
+      return {
+        state: 'succeeded',
+        content: JSON.stringify({
+          stage: 'report_completed',
+          finalReport: buildReport(materialAnalysis),
+        }),
+      }
+    }
+
+    const stage =
+      elapsedMs >= REPORT_AGGREGATION_DELAY_MS
+        ? 'report_aggregating'
+        : elapsedMs >= DOMAIN_REVIEW_DELAY_MS
+          ? 'domain_review_running'
+          : 'material_analysis_completed'
+
+    return {
+      state: 'running',
+      content: JSON.stringify({ stage, materialAnalysis }),
+    }
+  }
+
+  async cancelRun(_executeId: string): Promise<void> {
+    // No remote execution exists, so cancellation is intentionally a no-op.
+  }
+
+  private async readMaterialAnalysis(reviewRunId: string): Promise<MaterialAnalysis> {
+    const result = await findReviewResult(this.env.risktrace_db, reviewRunId, 'material_analysis')
+    if (!result) {
+      throw new AppError('WORKFLOW_PROVIDER_INVALID_STATE', '合规审查中间结果尚未就绪', 500)
+    }
+
+    try {
+      return JSON.parse(result.result_json) as MaterialAnalysis
+    } catch {
+      throw new AppError('STORED_RESULT_INVALID', '已保存的材料理解结果无法读取', 500)
+    }
+  }
+}
+
+function createMockExecuteId(reviewRunId: string): string {
+  return `mock_${Date.now()}_${reviewRunId}`
+}
+
+function parseMockExecuteId(executeId: string): { startedAt: number; reviewRunId: string } {
+  const match = /^mock_(\d{10,})_(.+)$/.exec(executeId)
+  const startedAt = match?.[1] ? Number(match[1]) : Number.NaN
+  const reviewRunId = match?.[2]?.trim() ?? ''
+
+  if (!Number.isFinite(startedAt) || !reviewRunId) {
+    throw new AppError('WORKFLOW_PROVIDER_INVALID_STATE', '合规审查运行编号无效', 500)
+  }
+
+  return { startedAt, reviewRunId }
+}
+
+function buildMaterialAnalysis(
+  projectTitle: string,
+  files: ReviewProviderFile[],
+): MaterialAnalysis {
+  const materials = files.map((file) => {
+    const fileStem = file.fileName.replace(/\.[^.]+$/, '').trim() || file.fileName
+    const category = classifyMaterial(file.fileName)
+
+    return {
+      documentId: file.documentId,
+      fileName: file.fileName,
       materialName: fileStem.slice(0, 120),
       category,
-      summary: `Mock 根据文件名识别为“${category}”；当前未解析文件正文。`,
+      summary: `根据文件名称初步识别为“${category}”；当前结果未解析文件正文。`,
     }
   })
 
@@ -232,12 +175,12 @@ function buildMockMaterialAnalysis(
     missingMaterials.length === 0
       ? {
           result: 'complete' as const,
-          summary: 'Mock 分类显示主要采购与付款环节材料均已覆盖。',
+          summary: '当前材料分类显示主要采购与付款环节材料均已覆盖。',
           missingMaterials,
         }
       : {
           result: 'incomplete' as const,
-          summary: `Mock 分类显示仍缺少 ${missingMaterials.length} 类关键材料。`,
+          summary: `当前材料分类显示仍缺少 ${missingMaterials.length} 类关键材料。`,
           missingMaterials,
         }
 
@@ -245,63 +188,17 @@ function buildMockMaterialAnalysis(
     projectTitle,
     status: 'reviewing',
     stage: 'material_analysis_completed',
-    summary: `已根据 ${documents.length} 份文件的名称完成 Mock 分类和材料完整性检查。`,
+    summary: `已根据 ${files.length} 份文件完成初步分类和材料完整性检查。`,
     materials,
     completeness,
   }
 }
 
 function classifyMaterial(fileName: string): MaterialCategory {
-  return (
-    CATEGORY_PATTERNS.find(({ pattern }) => pattern.test(fileName))?.category ?? '无法判断'
-  )
+  return CATEGORY_PATTERNS.find(({ pattern }) => pattern.test(fileName))?.category ?? '无法判断'
 }
 
-async function completeMockReport(
-  env: Env,
-  run: ReviewRunRow,
-  timestamp: string,
-): Promise<void> {
-  const reportAlreadyExists = await reviewResultExists(
-    env.risktrace_db,
-    run.id,
-    'final_report',
-  )
-
-  if (!reportAlreadyExists) {
-    const materialResult = await findReviewResult(
-      env.risktrace_db,
-      run.id,
-      'material_analysis',
-    )
-    if (!materialResult) {
-      throw new AppError('STORED_RESULT_INVALID', 'Mock 材料理解结果不存在', 500)
-    }
-
-    const analysis = parseMaterialAnalysis(materialResult.result_json)
-    const report = buildMockReport(analysis)
-    await upsertReviewResult(env.risktrace_db, {
-      reviewRunId: run.id,
-      resultType: 'final_report',
-      schemaVersion: MOCK_SCHEMA_VERSION,
-      result: report,
-      now: timestamp,
-    })
-  }
-
-  await updateReviewState(env.risktrace_db, {
-    reviewRunId: run.id,
-    projectId: run.project_id,
-    status: 'completed',
-    stage: 'report_completed',
-    providerStatus: 'success',
-    progress: 100,
-    now: timestamp,
-    finishedAt: timestamp,
-  })
-}
-
-function buildMockReport(analysis: MaterialAnalysis): ReviewReport {
+function buildReport(analysis: MaterialAnalysis): ReviewReport {
   const findings: ReviewReport['findings'] = []
   const materialsByCategory = new Map<MaterialCategory, MaterialAnalysis['materials']>()
 
@@ -326,9 +223,9 @@ function buildMockReport(analysis: MaterialAnalysis): ReviewReport {
         'procurement_approval',
         '采购审批材料缺失',
         'medium',
-        'Mock 分类中未识别到采购申请、预算或审批类文件，无法确认采购事项已经履行必要审批。',
+        '当前材料中未识别到采购申请、预算或审批类文件，无法确认采购事项已经履行必要审批。',
         [],
-        '补充采购申请、预算审批或采购决策材料后再进行正式审查。',
+        '补充采购申请、预算审批或采购决策材料，并结合原始材料复核审批链路。',
       ),
     )
   }
@@ -339,7 +236,7 @@ function buildMockReport(analysis: MaterialAnalysis): ReviewReport {
         'supplier_contract',
         '采购合同材料缺失',
         'high',
-        'Mock 分类中未识别到合同或补充协议，当前无法核验交易主体、金额、标的和付款条件。',
+        '当前材料中未识别到合同或补充协议，无法核验交易主体、金额、标的和付款条件。',
         [...supplierDocuments, ...paymentDocuments],
         '补充已签署的采购合同及相关补充协议。',
       ),
@@ -369,7 +266,7 @@ function buildMockReport(analysis: MaterialAnalysis): ReviewReport {
         'high',
         '已识别到合同、付款和交付验收类文件，但文件名中未发现安装调试或稳定运行证明，需结合正文确认付款条件是否满足。',
         [...contractDocuments, ...deliveryDocuments, ...paymentDocuments],
-        '在正式工作流中核对合同付款条款，并补充安装调试完成或稳定运行证明。',
+        '核对合同付款条款，并补充安装调试完成或稳定运行证明。',
       ),
     )
   }
@@ -390,8 +287,8 @@ function buildMockReport(analysis: MaterialAnalysis): ReviewReport {
   const overallRiskLevel = getHighestRiskLevel(findings.map((finding) => finding.riskLevel))
   const summary =
     findings.length > 0
-      ? `Mock 报告基于文件名分类识别出 ${findings.length} 项需要关注的材料链路问题；正式结论仍需解析文件正文。`
-      : 'Mock 分类显示主要材料环节已覆盖，未基于文件名发现明显缺口；正式结论仍需解析文件正文。'
+      ? `基于当前材料信息识别出 ${findings.length} 项需要关注的材料链路问题，相关结论应结合文件正文进一步复核。`
+      : '当前材料分类显示主要环节已覆盖，未发现明显材料缺口；仍应结合文件正文复核关键事实与条件。'
 
   return {
     projectTitle: analysis.projectTitle,
@@ -402,9 +299,9 @@ function buildMockReport(analysis: MaterialAnalysis): ReviewReport {
     completeness: analysis.completeness,
     findings,
     limitations: [
-      '当前 Mock 仅依据文件名进行分类和规则演示，未读取或解析文件正文。',
+      '当前审查仅依据可识别的文件名称进行初步分类，未读取或解析文件正文。',
       '当前未接入银行账户、工商信息和税务发票查验服务。',
-      '本报告仅用于验证 Demo 链路，不能作为真实合规决策依据。',
+      '风险结论应结合原始材料正文及必要的外部核验结果进一步复核。',
     ],
   }
 }
@@ -447,33 +344,4 @@ function getHighestRiskLevel(levels: RiskLevel[]): RiskLevel {
     (highest, level) => (ranking[level] > ranking[highest] ? level : highest),
     'low',
   )
-}
-
-function parseMaterialAnalysis(value: string): MaterialAnalysis {
-  try {
-    return JSON.parse(value) as MaterialAnalysis
-  } catch {
-    throw new AppError('STORED_RESULT_INVALID', 'Mock 材料理解结果无法读取', 500)
-  }
-}
-
-async function requireUploadedDocuments(
-  env: Env,
-  projectId: string,
-): Promise<DocumentRow[]> {
-  const documents = await listDocuments(env.risktrace_db, projectId)
-  if (documents.length === 0) {
-    throw new AppError('NO_DOCUMENTS', '请至少上传一份材料后再开始审查', 422)
-  }
-
-  const incompleteDocuments = documents.filter(
-    (document) => document.upload_status !== 'uploaded',
-  )
-  if (incompleteDocuments.length > 0) {
-    throw new AppError('DOCUMENT_UPLOAD_INCOMPLETE', '仍有材料尚未完成上传确认', 409, {
-      documentIds: incompleteDocuments.map((document) => document.id),
-    })
-  }
-
-  return documents
 }

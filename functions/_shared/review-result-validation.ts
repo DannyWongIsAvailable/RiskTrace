@@ -25,19 +25,19 @@ export interface ParsedProviderOutput {
 export function parseProviderOutput(content: string): ParsedProviderOutput {
   const normalized = stripJsonFence(content.trim())
   if (!normalized) {
-    throw invalidOutput('工作流未返回结果内容')
+    throw invalidOutput('审查执行未返回结果内容')
   }
 
   let value: unknown
   try {
     value = JSON.parse(normalized)
   } catch {
-    throw invalidOutput('工作流返回结果不是有效 JSON')
+    throw invalidOutput('审查执行返回结果不是有效 JSON')
   }
 
   const record = asObject(value)
   if (!record) {
-    throw invalidOutput('工作流返回结果必须是 JSON 对象')
+    throw invalidOutput('审查执行返回结果必须是 JSON 对象')
   }
 
   const nested = asObject(record.data) ?? asObject(record.output) ?? record
@@ -55,7 +55,7 @@ export function parseProviderOutput(content: string): ParsedProviderOutput {
     return { materialAnalysis: nested, stage }
   }
 
-  throw invalidOutput('工作流返回结果缺少材料理解或最终报告')
+  throw invalidOutput('审查执行返回结果缺少材料理解或最终报告')
 }
 
 export function normalizeMaterialAnalysis(
@@ -104,7 +104,7 @@ export function normalizeMaterialAnalysis(
         fileName: document.original_name,
         materialName: '未识别材料',
         category: '无法判断',
-        summary: '工作流未能识别该文件内容，已保留文件记录并继续审查其他材料。',
+        summary: '审查执行未能识别该文件内容，已保留文件记录并继续审查其他材料。',
       },
   )
 
