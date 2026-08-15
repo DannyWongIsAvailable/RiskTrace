@@ -10,7 +10,11 @@ import type {
 import { AppError } from './errors'
 import { createWorkflowFileList } from './file-service'
 import { createId } from './ids'
-import { isMockReviewRun, synchronizeProjectReviewWithMock } from './mock-review-service'
+import {
+  isMockReviewRun,
+  startProjectReviewWithMock,
+  synchronizeProjectReviewWithMock,
+} from './mock-review-service'
 import { requireProject } from './project-repository'
 import {
   attachProviderExecuteId,
@@ -22,7 +26,11 @@ import {
   requireReviewRunByProject,
   updateReviewState,
 } from './review-repository'
-import { createReviewProvider } from './xingchen-provider'
+import {
+  createReviewProvider,
+  getConfiguredReviewProviderName,
+} from './review-provider-factory'
+import type { ExternalReviewProviderName, ProviderRunResult } from './review-provider'
 import {
   normalizeMaterialAnalysis,
   normalizeReviewReport,
@@ -36,6 +44,11 @@ export async function startProjectReview(
   env: Env,
   input: { projectId: string; requestOrigin: string },
 ): Promise<ReviewRunRow> {
+  const providerName = getConfiguredReviewProviderName(env)
+  if (providerName === 'mock') {
+    return startProjectReviewWithMock(env, input.projectId)
+  }
+
   const project = await requireProject(env.risktrace_db, input.projectId)
   const documents = await requireUploadedDocuments(env, input.projectId)
   const now = new Date().toISOString()
@@ -52,13 +65,20 @@ export async function startProjectReview(
     throw new AppError('REVIEW_RETRY_REQUIRED', '合规审查已失败，请使用重试接口', 409)
   }
 
-  const claimed = await claimReviewRunStart(env.risktrace_db, run.id, now)
+  const claimed = await claimReviewRunStart(env.risktrace_db, run.id, providerName, now)
   if (!claimed) {
     return requireReviewRunByProject(env.risktrace_db, input.projectId)
   }
 
   try {
-    return await createProviderRun(env, project, run.id, documents, input.requestOrigin)
+    return await createProviderRun(
+      env,
+      providerName,
+      project,
+      run.id,
+      documents,
+      input.requestOrigin,
+    )
   } catch (error) {
     await markReviewFailed(env, {
       reviewRunId: run.id,
@@ -85,19 +105,31 @@ export async function retryProjectReview(
     throw new AppError('RETRY_LIMIT_EXCEEDED', '合规审查已达到最大重试次数', 409)
   }
 
+  const providerName = getConfiguredReviewProviderName(env)
   const now = new Date().toISOString()
   await prepareReviewRetry(env.risktrace_db, {
     reviewRunId: run.id,
     projectId: input.projectId,
     now,
   })
-  const claimed = await claimReviewRunStart(env.risktrace_db, run.id, now)
+  if (providerName === 'mock') {
+    return startProjectReviewWithMock(env, input.projectId)
+  }
+
+  const claimed = await claimReviewRunStart(env.risktrace_db, run.id, providerName, now)
   if (!claimed) {
     throw new AppError('REVIEW_ALREADY_RUNNING', '合规审查正在运行', 409)
   }
 
   try {
-    return await createProviderRun(env, project, run.id, documents, input.requestOrigin)
+    return await createProviderRun(
+      env,
+      providerName,
+      project,
+      run.id,
+      documents,
+      input.requestOrigin,
+    )
   } catch (error) {
     await markReviewFailed(env, {
       reviewRunId: run.id,
@@ -115,55 +147,10 @@ export async function synchronizeProjectReview(env: Env, projectId: string): Pro
     return run
   }
 
-  const provider = createReviewProvider(env)
+  const providerName = resolveExternalReviewProviderName(run)
+  const provider = createReviewProvider(env, providerName)
   const providerResult = await provider.getRun(run.provider_execute_id)
-
-  if (providerResult.state === 'running') {
-    if (run.provider_status !== 'running') {
-      await updateReviewState(env.risktrace_db, {
-        reviewRunId: run.id,
-        projectId,
-        status: 'reviewing',
-        stage: run.stage,
-        providerStatus: 'running',
-        progress: run.progress,
-        now: new Date().toISOString(),
-      })
-    }
-    return requireReviewRunByProject(env.risktrace_db, projectId)
-  }
-
-  if (providerResult.state === 'interrupted') {
-    await markReviewFailed(env, {
-      reviewRunId: run.id,
-      projectId,
-      code: 'WORKFLOW_INTERRUPTED',
-      message: '工作流进入了当前 Demo 不支持的人工问答节点',
-      providerStatus: 'interrupt',
-    })
-    return requireReviewRunByProject(env.risktrace_db, projectId)
-  }
-
-  if (providerResult.state === 'failed') {
-    await markReviewFailed(env, {
-      reviewRunId: run.id,
-      projectId,
-      code: 'WORKFLOW_EXECUTION_FAILED',
-      message: '合规审查工作流执行失败',
-    })
-    return requireReviewRunByProject(env.risktrace_db, projectId)
-  }
-
-  try {
-    await persistProviderSuccess(env, run, providerResult.content ?? '')
-  } catch (error) {
-    await markReviewFailed(env, {
-      reviewRunId: run.id,
-      projectId,
-      code: error instanceof AppError ? error.code : 'WORKFLOW_OUTPUT_INVALID',
-      message: '工作流结果校验失败',
-    })
-  }
+  await applyProviderRunResult(env, run, providerResult)
 
   return requireReviewRunByProject(env.risktrace_db, projectId)
 }
@@ -269,6 +256,7 @@ export async function processProviderCallback(
 
 async function createProviderRun(
   env: Env,
+  providerName: ExternalReviewProviderName,
   project: ProjectRow,
   reviewRunId: string,
   documents: Awaited<ReturnType<typeof listDocuments>>,
@@ -280,26 +268,16 @@ async function createProviderRun(
   }
 
   const files = await createWorkflowFileList(env, documents)
-  const callbackUrl = `${requestOrigin.replace(/\/$/, '')}/internal/provider/xingchen-callback`
-  const workflowInput = {
+  const callbackUrl = `${requestOrigin.replace(/\/$/, '')}/internal/provider/callback`
+  const provider = createReviewProvider(env, providerName)
+  const providerRun = await provider.createRun({
     projectId: project.id,
     reviewRunId,
     projectTitle: project.title,
     files,
-    callbackUrl,
-  }
-  const provider = createReviewProvider(env)
-  const providerRun = await provider.createRun({
-    projectId: project.id,
-    reviewRunId,
-    parameters: {
-      PROJECT_ID: project.id,
-      REVIEW_RUN_ID: reviewRunId,
-      PROJECT_TITLE: project.title,
-      FILES_JSON: JSON.stringify(files),
-      CALLBACK_URL: callbackUrl,
-      CALLBACK_TOKEN: callbackToken,
-      AGENT_USER_INPUT: JSON.stringify(workflowInput),
+    callback: {
+      url: callbackUrl,
+      token: callbackToken,
     },
   })
   const now = new Date().toISOString()
@@ -318,7 +296,74 @@ async function createProviderRun(
     throw error
   }
 
+  const attachedRun = await requireReviewRunById(env.risktrace_db, reviewRunId)
+  if (providerRun.initialResult) {
+    await applyProviderRunResult(env, attachedRun, providerRun.initialResult)
+  }
+
   return requireReviewRunById(env.risktrace_db, reviewRunId)
+}
+
+async function applyProviderRunResult(
+  env: Env,
+  run: ReviewRunRow,
+  providerResult: ProviderRunResult,
+): Promise<void> {
+  if (providerResult.state === 'running') {
+    if (run.provider_status !== 'running') {
+      await updateReviewState(env.risktrace_db, {
+        reviewRunId: run.id,
+        projectId: run.project_id,
+        status: 'reviewing',
+        stage: run.stage,
+        providerStatus: 'running',
+        progress: run.progress,
+        now: new Date().toISOString(),
+      })
+    }
+    return
+  }
+
+  if (providerResult.state === 'interrupted') {
+    await markReviewFailed(env, {
+      reviewRunId: run.id,
+      projectId: run.project_id,
+      code: 'WORKFLOW_INTERRUPTED',
+      message: '工作流进入了当前 Demo 不支持的人工问答节点',
+      providerStatus: 'interrupt',
+    })
+    return
+  }
+
+  if (providerResult.state === 'failed') {
+    await markReviewFailed(env, {
+      reviewRunId: run.id,
+      projectId: run.project_id,
+      code: 'WORKFLOW_EXECUTION_FAILED',
+      message: '合规审查工作流执行失败',
+    })
+    return
+  }
+
+  try {
+    await persistProviderSuccess(env, run, providerResult.content ?? '')
+  } catch (error) {
+    await markReviewFailed(env, {
+      reviewRunId: run.id,
+      projectId: run.project_id,
+      code: error instanceof AppError ? error.code : 'WORKFLOW_OUTPUT_INVALID',
+      message: '工作流结果校验失败',
+    })
+  }
+}
+
+function resolveExternalReviewProviderName(run: ReviewRunRow): ExternalReviewProviderName {
+  // Legacy runs created before provider_name existed were Xingchen executions.
+  const providerName = run.provider_name ?? 'xingchen'
+  if (providerName === 'mock') {
+    throw new AppError('WORKFLOW_PROVIDER_INVALID_STATE', 'Mock 审查不应进入外部 Provider 同步', 500)
+  }
+  return providerName
 }
 
 async function persistProviderSuccess(env: Env, run: ReviewRunRow, content: string): Promise<void> {

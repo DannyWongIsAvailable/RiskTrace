@@ -1,3 +1,5 @@
+import type { ReviewProviderName } from './review-provider'
+
 export const PROJECT_STATUSES = ['draft', 'uploading', 'reviewing', 'completed', 'failed'] as const
 export const PROJECT_STAGES = [
   'waiting_for_upload',
@@ -83,6 +85,7 @@ export interface ReviewRunRow {
   project_id: string
   status: ReviewStatus
   stage: ReviewStage
+  provider_name: ReviewProviderName | null
   provider_execute_id: string | null
   provider_status: ProviderStatus
   progress: number

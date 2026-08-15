@@ -1,6 +1,6 @@
 # RiskTrace
 
-RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需填写项目标题并一次性上传当前已有的全部材料，系统随后启动**一条讯飞星辰 Agent 工作流**，在同一次执行中连续完成材料理解、完整性检查、领域路由、领域审查和报告聚合。
+RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需填写项目标题并一次性上传当前已有的全部材料，系统随后通过统一 `ReviewProvider` 启动一次完整审查执行，在同一次执行中连续完成材料理解、完整性检查、领域路由、领域审查和报告聚合。当前可在 Mock、讯飞星辰 Workflow 与 DeepSeek Harness 之间切换，前端 API 保持不变。
 
 > 线上地址：https://risktrace.pages.dev/
 
@@ -8,9 +8,9 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需�
 
 ## 当前 MVP 开发模式
 
-为先打通可演示链路，当前前端保留“审查总览 → 项目列表 → 新建项目 → 上传材料 → 查看报告”五个页面。项目、文件和结果仍通过 Pages Functions、D1 与 R2 真实读写；`POST /api/projects/:projectId/uploads/complete` 暂不启动讯飞星辰工作流，而是先生成并保存符合正式 `MaterialAnalysis` 契约的 Mock 材料分类结果。前端立即展示分类、摘要与完整性检查，并通过审查状态接口继续轮询；Mock 服务随后依次推进领域审查、报告聚合并幂等生成符合正式 `ReviewReport` 契约的最终报告。
+为先打通可演示链路，当前前端保留“审查总览 → 项目列表 → 新建项目 → 上传材料 → 查看报告”五个页面。项目、文件和结果仍通过 Pages Functions、D1 与 R2 真实读写。`POST /api/projects/:projectId/uploads/complete` 现在统一进入 `startProjectReview`，再由 `REVIEW_PROVIDER` 选择 Mock、讯飞星辰或 DeepSeek Harness；因此切换 Provider 不再需要修改前端接口或上传完成路由。默认配置仍为 `mock`，保持现有演示行为。
 
-现有 Review Provider、星辰回调和正式结果校验代码继续保留。接入工作流时，只需将上传批次完成接口切回 `startProjectReview`，前端材料结果、状态轮询、报告页和报告查询接口无需改版。
+Provider 适配、环境变量和 DeepSeek Harness HTTP 契约见 `docs/REVIEW_PROVIDER.md`。
 
 ## 1. 核心链路
 
@@ -18,16 +18,16 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需�
 用户填写项目标题
 → 一次性上传全部材料
 → 上传批次完成后创建一个审查运行
-→ 启动一条讯飞星辰 Agent 工作流
+→ 通过 ReviewProvider 启动一次完整审查执行
 → 材料理解、自动分类、逐文件摘要和完整性检查
-→ 同一工作流输出材料理解中间结果，API 校验并保存
-→ 同一工作流继续执行路由 Agent 和领域 Agent
+→ 同一 Provider 执行输出材料理解中间结果，API 校验并保存
+→ 同一 Provider 执行继续执行路由 Agent 和领域 Agent
 → 聚合 Agent 生成最终风险报告
 → API 校验文件引用和字段结构并保存 D1
 → 前端通过 RiskTrace API 展示进度、中间结果和最终报告
 ```
 
-整个流程不要求用户手工分类、确认材料理解结果或再次点击“发起审查”。材料理解和报告聚合属于同一个工作流执行实例，不拆成两条外部工作流。
+整个流程不要求用户手工分类、确认材料理解结果或再次点击“发起审查”。材料理解和报告聚合属于同一个 Provider 执行实例，不拆成两次外部执行。
 
 ## 2. 当前 Demo 范围
 
@@ -36,7 +36,7 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需�
 - 创建采购项目时只填写项目标题；
 - 一次选择并上传全部已有材料；
 - 文件直接上传私有 Cloudflare R2；
-- 上传完成后自动创建一个审查运行并启动一条星辰工作流；
+- 上传完成后自动创建一个审查运行并通过当前配置的 Review Provider 启动执行；
 - 自动生成材料名称、类别、逐文件摘要、项目摘要和完整性结果；
 - 在工作流继续运行时展示已保存的材料理解中间结果；
 - 由路由 Agent 选择适用领域 Agent；
@@ -60,7 +60,7 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需�
 |---|---|---|
 | 顶层业务对象 | 采购项目 | `project` / `Project` / `projectId` |
 | 一次自动化审查过程 | 合规审查 | `review` / `reviewRun` / `reviewRunId` |
-| 星辰单次异步执行 | 工作流执行 | `providerExecuteId` / `executeId` |
+| Provider 单次执行 | 工作流执行 | `providerExecuteId` / `executeId` |
 | 材料理解中间输出 | 材料理解结果 | `materialAnalysis` |
 | 最终检出结果 | 风险事项 | `riskFinding` / `RiskFinding` / `findingId` |
 | 最终聚合输出 | 合规审查报告 | `reviewReport` / `ReviewReport` |
@@ -76,14 +76,13 @@ Cloudflare Pages Functions
         ├─ Cloudflare D1：项目、文件、审查运行、中间结果和最终报告
         ├─ Cloudflare R2：原始材料、派生件和可选调试输出
         └─ Review Provider
-              └─ 一条讯飞星辰 Agent 工作流
-                    材料理解
-                    → 路由 Agent
-                    → 领域 Agent
-                    → 聚合 Agent
+              ├─ Mock
+              ├─ 讯飞星辰 Workflow
+              └─ DeepSeek Harness
+                    材料理解 → 路由 Agent → 领域 Agent → 聚合 Agent
 ```
 
-Pages Functions 负责项目创建、上传编排、R2 短时访问、单工作流启动、同一 `executeId` 的状态同步、模型结果校验、幂等保存和稳定 API 输出。前端不得直接访问 D1、R2 或讯飞星辰。
+Pages Functions 负责项目创建、上传编排、R2 短时访问、Provider 启动、同一 `executeId` 的状态同步、模型结果校验、幂等保存和稳定 API 输出。前端不得直接访问 D1、R2 或任何外部模型/工作流平台。
 
 ## 5. 技术栈
 
@@ -109,13 +108,14 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、单工作�
 - Wrangler
 - D1 Migrations
 
-### 外部工作流
+### 外部工作流 / Agent Runtime
 
-- 讯飞星辰 Agent 工作流；
-- 业务层通过统一 `ReviewProvider` 接口接入；
-- 当前 Demo 只配置一个工作流 ID；
-- 一次审查运行只维护一个当前有效的 Provider `executeId`；
-- 材料理解结果和最终报告是同一次工作流运行中的不同业务输出。
+- 业务层只依赖统一 `ReviewProvider` 接口；
+- `REVIEW_PROVIDER=mock|xingchen|deepseek-harness` 选择实现；
+- 讯飞星辰 Provider 负责星辰专有认证、参数名和 Workflow API；
+- DeepSeek Harness Provider 负责 Harness HTTP 契约和运行状态归一化；
+- 一次审查运行持久化 `provider_name + provider_execute_id`，运行中的任务不会因默认 Provider 切换而串到另一平台；
+- 材料理解结果和最终报告仍属于同一次 Provider 执行中的不同业务输出。
 
 ## 6. 目标页面与路由
 
@@ -241,8 +241,8 @@ pnpm cf:deploy
 ## 12. 核心工程规则
 
 - 顶层业务对象统一使用“采购项目”和 `project` 命名；
-- 一个审查运行只启动一条从材料理解贯通到报告聚合的星辰工作流；
-- 不得为材料理解和领域审查分别配置两个工作流 ID；
+- 一个审查运行只启动一次从材料理解贯通到报告聚合的 Provider 执行；
+- 不得为材料理解和领域审查分别创建两个 Provider 执行或两个 `executeId`；
 - 同一次运行的材料理解中间结果和最终报告分别校验、幂等保存；
 - Vue 组件和 Pinia Store 不得直接调用 `fetch`；
 - 浏览器请求统一经过 `src/api/request.ts` 与 `src/api/modules/`；

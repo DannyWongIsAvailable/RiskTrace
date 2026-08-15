@@ -1,4 +1,5 @@
 import type { ProviderStatus, ReviewRunRow, ReviewStage, ReviewStatus } from './domain'
+import type { ReviewProviderName } from './review-provider'
 import { AppError } from './errors'
 
 export async function createOrGetReviewRun(
@@ -67,19 +68,20 @@ export async function requireReviewRunById(
 export async function claimReviewRunStart(
   db: D1Database,
   reviewRunId: string,
+  providerName: ReviewProviderName,
   now: string,
 ): Promise<boolean> {
   const result = await db
     .prepare(
       `UPDATE review_runs
-       SET provider_status = 'starting', status = 'reviewing',
+       SET provider_name = ?, provider_status = 'starting', status = 'reviewing',
            stage = 'material_analysis_running', progress = 20,
            attempt_count = attempt_count + 1,
            error_code = NULL, error_message = NULL,
            finished_at = NULL, updated_at = ?
        WHERE id = ? AND provider_execute_id IS NULL AND provider_status = 'pending'`,
     )
-    .bind(now, reviewRunId)
+    .bind(providerName, now, reviewRunId)
     .run()
 
   return (result.meta.changes ?? 0) === 1
@@ -181,9 +183,11 @@ export async function prepareReviewRetry(
   await db.batch([
     db
       .prepare(
+        // provider_name is introduced by migrations/0002_review_provider.sql.
+        // noinspection SqlResolve
         `UPDATE review_runs
          SET status = 'reviewing', stage = 'material_analysis_running',
-             provider_execute_id = NULL, provider_status = 'pending', progress = 20,
+             provider_name = NULL, provider_execute_id = NULL, provider_status = 'pending', progress = 20,
              error_code = NULL, error_message = NULL, finished_at = NULL, updated_at = ?
          WHERE id = ? AND status = 'failed'`,
       )

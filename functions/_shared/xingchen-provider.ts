@@ -15,11 +15,9 @@ interface XingchenResponse {
   data?: unknown
 }
 
-export function createReviewProvider(env: Env): ReviewProvider {
-  return new XingchenReviewProvider(env)
-}
+export class XingchenReviewProvider implements ReviewProvider {
+  readonly name = 'xingchen' as const
 
-class XingchenReviewProvider implements ReviewProvider {
   private readonly apiBaseUrl: string
   private readonly apiKey: string
   private readonly apiSecret: string
@@ -27,21 +25,40 @@ class XingchenReviewProvider implements ReviewProvider {
 
   constructor(env: Env) {
     this.apiBaseUrl = (env.XFYUN_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '')
-    this.apiKey = env.XFYUN_API_KEY?.trim()
-    this.apiSecret = env.XFYUN_API_SECRET?.trim()
-    this.flowId = env.XFYUN_FLOW_ID_REVIEW?.trim()
+    const apiKey = env.XFYUN_API_KEY?.trim()
+    const apiSecret = env.XFYUN_API_SECRET?.trim()
+    const flowId = env.XFYUN_FLOW_ID_REVIEW?.trim()
 
-    if (!this.apiKey || !this.apiSecret || !this.flowId) {
+    if (!apiKey || !apiSecret || !flowId) {
       throw new AppError('WORKFLOW_NOT_CONFIGURED', '讯飞星辰工作流尚未完成配置', 500)
     }
+
+    this.apiKey = apiKey
+    this.apiSecret = apiSecret
+    this.flowId = flowId
   }
 
   async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
+    const workflowInput = {
+      projectId: input.projectId,
+      reviewRunId: input.reviewRunId,
+      projectTitle: input.projectTitle,
+      files: input.files,
+      callbackUrl: input.callback.url,
+    }
     const response = await this.post('/workflow/v1/async/chat/completions', {
       flow_id: this.flowId,
       uid: input.projectId,
       chat_id: compactChatId(input.reviewRunId),
-      parameters: input.parameters,
+      parameters: {
+        PROJECT_ID: input.projectId,
+        REVIEW_RUN_ID: input.reviewRunId,
+        PROJECT_TITLE: input.projectTitle,
+        FILES_JSON: JSON.stringify(input.files),
+        CALLBACK_URL: input.callback.url,
+        CALLBACK_TOKEN: input.callback.token,
+        AGENT_USER_INPUT: JSON.stringify(workflowInput),
+      },
     })
     const code = readNumber(response.code)
     const data = readObject(response.data)
@@ -62,7 +79,7 @@ class XingchenReviewProvider implements ReviewProvider {
     const data = readObject(response.data)
     const status = readString(data?.status)?.toLowerCase()
     const output = readObject(data?.output)
-    const content = readString(output?.content) ?? ''
+    const content = stringifyProviderContent(output?.content)
     const message = readString(response.message) ?? undefined
 
     if (code !== 0) {
@@ -148,4 +165,11 @@ function readString(value: unknown): string | null {
 
 function readNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function stringifyProviderContent(value: unknown): string {
+  if (typeof value === 'string') {
+    return value
+  }
+  return value === undefined ? '' : JSON.stringify(value)
 }

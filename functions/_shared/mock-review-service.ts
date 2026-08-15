@@ -14,6 +14,7 @@ import { AppError } from './errors'
 import { createId } from './ids'
 import { requireProject } from './project-repository'
 import {
+  claimReviewRunStart,
   createOrGetReviewRun,
   markMaterialAnalysisSaved,
   requireReviewRunById,
@@ -57,7 +58,10 @@ function now(): string {
 export function isMockReviewRun(run: ReviewRunRow): boolean {
   return (
     run.status === 'reviewing' &&
-    run.provider_execute_id === null &&
+    (run.provider_name === 'mock' ||
+      (run.provider_name === null &&
+        run.provider_execute_id === null &&
+        run.material_analysis_saved_at !== null)) &&
     run.provider_status === 'running' &&
     run.material_analysis_saved_at !== null
   )
@@ -75,31 +79,59 @@ export async function startProjectReviewWithMock(
     now: now(),
   })
 
-  if (reviewRun.status === 'completed' || reviewRun.material_analysis_saved_at) {
+  if (reviewRun.status === 'completed') {
     return reviewRun
+  }
+  if (reviewRun.provider_name === 'mock' && reviewRun.material_analysis_saved_at) {
+    return reviewRun
+  }
+  if (reviewRun.status === 'failed') {
+    throw new AppError('REVIEW_RETRY_REQUIRED', '合规审查已失败，请使用重试接口', 409)
   }
 
   const timestamp = now()
-  const materialAnalysis = buildMockMaterialAnalysis(project.title, documents)
+  const claimed = await claimReviewRunStart(env.risktrace_db, reviewRun.id, 'mock', timestamp)
+  if (!claimed) {
+    return requireReviewRunById(env.risktrace_db, reviewRun.id)
+  }
 
-  await upsertReviewResult(env.risktrace_db, {
-    reviewRunId: reviewRun.id,
-    resultType: 'material_analysis',
-    schemaVersion: MOCK_SCHEMA_VERSION,
-    result: materialAnalysis,
-    now: timestamp,
-  })
-  await applyMaterialAnalysisToDocuments(
-    env.risktrace_db,
-    projectId,
-    materialAnalysis,
-    timestamp,
-  )
-  await markMaterialAnalysisSaved(env.risktrace_db, {
-    reviewRunId: reviewRun.id,
-    projectId,
-    now: timestamp,
-  })
+  try {
+    const materialAnalysis = buildMockMaterialAnalysis(project.title, documents)
+
+    await upsertReviewResult(env.risktrace_db, {
+      reviewRunId: reviewRun.id,
+      resultType: 'material_analysis',
+      schemaVersion: MOCK_SCHEMA_VERSION,
+      result: materialAnalysis,
+      now: timestamp,
+    })
+    await applyMaterialAnalysisToDocuments(
+      env.risktrace_db,
+      projectId,
+      materialAnalysis,
+      timestamp,
+    )
+    await markMaterialAnalysisSaved(env.risktrace_db, {
+      reviewRunId: reviewRun.id,
+      projectId,
+      now: timestamp,
+    })
+  } catch (error) {
+    const failedAt = now()
+    await updateReviewState(env.risktrace_db, {
+      reviewRunId: reviewRun.id,
+      projectId,
+      status: 'failed',
+      stage: 'failed',
+      providerStatus: 'failed',
+      progress: 0,
+      errorCode: error instanceof AppError ? error.code : 'MOCK_REVIEW_FAILED',
+      errorMessage: 'Mock 合规审查执行失败',
+      now: failedAt,
+      finishedAt: failedAt,
+    })
+    throw error
+  }
 
   return requireReviewRunById(env.risktrace_db, reviewRun.id)
 }

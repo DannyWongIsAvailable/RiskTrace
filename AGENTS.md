@@ -5,7 +5,7 @@
 
 ## 1. 产品上下文
 
-RiskTrace 当前是一套面向企业采购项目的智能合规审查 Demo。用户只填写项目标题并一次性上传全部材料，系统随后通过一条讯飞星辰 Agent 工作流连续完成材料理解、完整性检查、领域路由、领域审查和报告聚合。
+RiskTrace 当前是一套面向企业采购项目的智能合规审查 Demo。用户只填写项目标题并一次性上传全部材料，系统随后通过统一 Review Provider 启动一次完整审查执行，连续完成材料理解、完整性检查、领域路由、领域审查和报告聚合。Provider 可由配置选择 Mock、讯飞星辰 Workflow 或 DeepSeek Harness，业务 API 不得绑定具体供应商。
 
 当前版本的核心链路是：
 
@@ -13,9 +13,9 @@ RiskTrace 当前是一套面向企业采购项目的智能合规审查 Demo。�
 项目标题
 → 全部材料上传
 → 创建一个审查运行
-→ 启动一条星辰工作流
+→ 通过 Review Provider 启动一次完整执行
 → 保存材料理解中间结果
-→ 同一工作流继续领域审查
+→ 同一 Provider 执行继续领域审查
 → 聚合并保存最终报告
 ```
 
@@ -68,13 +68,13 @@ Pages Functions 负责：
 
 - 项目、文件、审查运行和结果 API；
 - R2 上传签名、上传确认和短时读取 URL；
-- 通过 Provider 启动一条贯通全流程的星辰工作流；
+- 通过 Provider 启动一次贯通全流程的审查执行；
 - 为一个审查运行维护一个当前有效的 Provider `executeId`；
-- 同步同一工作流的业务阶段；
+- 使用本次运行持久化的 `provider_name` 与 `provider_execute_id` 同步业务阶段；
 - 校验并幂等保存材料理解中间结果和最终报告；
 - D1 持久化、错误映射、重试边界和结构化日志。
 
-Pages Functions 不得把材料理解和领域审查拆成两个独立工作流，也不得因阶段切换创建第二个 `executeId`。
+Pages Functions 不得把材料理解和领域审查拆成两个独立 Provider 执行，也不得因阶段切换创建第二个 `executeId`。切换默认 Provider 不得影响已经启动的审查运行。
 
 
 ## 4. 编码前上下文扫描
@@ -103,8 +103,11 @@ Vue 3 前端
 Cloudflare Pages Functions
     ├─ D1：项目、文件、审查运行、中间结果和最终报告
     ├─ R2：原始材料、派生件和可选调试输出
-    └─ Review Provider：一条星辰工作流
-          材料理解 → 路由 Agent → 领域 Agent → 聚合 Agent
+    └─ Review Provider
+          ├─ Mock
+          ├─ XingchenReviewProvider
+          └─ DeepSeekHarnessReviewProvider
+               材料理解 → 路由 Agent → 领域 Agent → 聚合 Agent
 ```
 
 必须遵守：
@@ -112,9 +115,9 @@ Cloudflare Pages Functions
 - 前端只通过 API 访问后端；
 - 前端不直接访问 D1、R2 或外部工作流；
 - 外部工作流平台通过 Provider 抽象接入，业务代码不得绑定特定 SDK；
-- 当前 Demo 只配置一个工作流 ID；
-- 上传完成后只调用一次 Provider `createRun`；
-- 材料理解结果和最终报告属于同一工作流执行中的不同业务输出；
+- Provider 通过 `REVIEW_PROVIDER` 统一选择，业务服务不得 import 具体供应商 Provider；
+- 非 Mock 模式上传完成后只调用一次 Provider `createRun`；
+- 材料理解结果和最终报告属于同一 Provider 执行中的不同业务输出；
 - 外部服务输出必须再次经过后端校验；
 
 
