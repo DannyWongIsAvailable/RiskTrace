@@ -186,7 +186,7 @@ export async function processProviderCallback(
   env: Env,
   input: {
     reviewRunId: string
-    executeId: string
+    executeId?: string
     stage?: ReviewStage
     materialAnalysis?: unknown
     finalReport?: unknown
@@ -194,7 +194,10 @@ export async function processProviderCallback(
   },
 ): Promise<ReviewRunRow> {
   const run = await requireReviewRunById(env.risktrace_db, input.reviewRunId)
-  if (!run.provider_execute_id || run.provider_execute_id !== input.executeId) {
+  if (
+    input.executeId &&
+    (!run.provider_execute_id || run.provider_execute_id !== input.executeId)
+  ) {
     throw new AppError('STALE_PROVIDER_CALLBACK', '审查回调不属于当前有效执行', 409)
   }
   if (run.status !== 'reviewing') {

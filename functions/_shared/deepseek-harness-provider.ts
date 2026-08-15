@@ -21,17 +21,13 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
 
   private readonly baseUrl: string
   private readonly apiKey: string | null
-  private readonly callbackToken: string
 
   constructor(env: Env) {
     this.baseUrl = env.DEEPSEEK_HARNESS_BASE_URL?.trim().replace(/\/$/, '') ?? ''
     this.apiKey = env.DEEPSEEK_HARNESS_API_KEY?.trim() || null
-    const callbackToken = env.RISKTRACE_CALLBACK_TOKEN?.trim()
-
-    if (!this.baseUrl || !callbackToken) {
+    if (!this.baseUrl) {
       throw new AppError('WORKFLOW_NOT_CONFIGURED', '合规审查服务尚未完成配置', 500)
     }
-    this.callbackToken = callbackToken
   }
 
   async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
@@ -46,9 +42,6 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       files: input.files,
       callback: {
         url: input.callbackUrl,
-        headers: {
-          'X-RiskTrace-Callback-Token': this.callbackToken,
-        },
       },
     })
 

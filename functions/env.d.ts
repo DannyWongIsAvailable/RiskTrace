@@ -8,7 +8,6 @@ interface Env {
   XFYUN_FLOW_ID_REVIEW?: string
   DEEPSEEK_HARNESS_BASE_URL?: string
   DEEPSEEK_HARNESS_API_KEY?: string
-  RISKTRACE_CALLBACK_TOKEN: string
   CLOUDFLARE_ACCOUNT_ID: string
   R2_BUCKET_NAME: string
   R2_ACCESS_KEY_ID: string

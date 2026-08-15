@@ -3,7 +3,6 @@ import { AppError } from './errors'
 import { success } from './http'
 import { expectObject, expectString, readJsonObject } from './input'
 import { processProviderCallback } from './review-service'
-import { secureTokenEquals } from './security'
 import { serializeReviewRun } from './serializers'
 
 export const handleProviderCallback: PagesFunction<Env, string, RequestData> = async ({
@@ -11,23 +10,26 @@ export const handleProviderCallback: PagesFunction<Env, string, RequestData> = a
   env,
   data,
 }) => {
-  const expectedToken = env.RISKTRACE_CALLBACK_TOKEN?.trim()
-  const providedToken = request.headers.get('X-RiskTrace-Callback-Token')?.trim()
-  if (!expectedToken || !providedToken || !(await secureTokenEquals(expectedToken, providedToken))) {
-    throw new AppError('UNAUTHORIZED', '工作流回调鉴权失败', 401)
-  }
-
+  // Demo-only callback: intentionally no token/header authentication.
   const body = await readJsonObject(request)
   const reviewRunId = expectString(body.reviewRunId, 'reviewRunId', { min: 1, max: 80 })
-  const executeId = expectString(body.executeId, 'executeId', { min: 1, max: 120 })
+  const executeId = parseOptionalString(body.executeId, 'executeId', 120)
   const stage = parseOptionalStage(body.stage)
   const failure = parseFailure(body.failure)
+  const materialAnalysis = parseOptionalJsonValue(
+    body.materialAnalysis ?? body.material_analysis,
+    'materialAnalysis',
+  )
+  const finalReport = parseOptionalJsonValue(
+    body.finalReport ?? body.final_report,
+    'finalReport',
+  )
   const run = await processProviderCallback(env, {
     reviewRunId,
     executeId,
     stage,
-    materialAnalysis: body.materialAnalysis ?? body.material_analysis,
-    finalReport: body.finalReport ?? body.final_report,
+    materialAnalysis,
+    finalReport,
     failure,
   })
 
@@ -35,6 +37,35 @@ export const handleProviderCallback: PagesFunction<Env, string, RequestData> = a
     message: '工作流回调已处理',
     requestId: data.requestId,
   })
+}
+
+function parseOptionalJsonValue(value: unknown, fieldName: string): unknown {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  const normalized = value.trim()
+  if (!normalized) {
+    return undefined
+  }
+
+  try {
+    return JSON.parse(normalized) as unknown
+  } catch {
+    throw new AppError('VALIDATION_FAILED', `${fieldName} 必须是有效 JSON`, 422)
+  }
+}
+
+function parseOptionalString(
+  value: unknown,
+  fieldName: string,
+  max: number,
+): string | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined
+  }
+
+  return expectString(value, fieldName, { min: 1, max })
 }
 
 function parseOptionalStage(value: unknown): ReviewStage | undefined {

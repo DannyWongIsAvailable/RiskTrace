@@ -22,23 +22,19 @@ export class XingchenReviewProvider implements ReviewProvider {
   private readonly apiKey: string
   private readonly apiSecret: string
   private readonly flowId: string
-  private readonly callbackToken: string
 
   constructor(env: Env) {
     this.apiBaseUrl = (env.XFYUN_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '')
     const apiKey = env.XFYUN_API_KEY?.trim()
     const apiSecret = env.XFYUN_API_SECRET?.trim()
     const flowId = env.XFYUN_FLOW_ID_REVIEW?.trim()
-    const callbackToken = env.RISKTRACE_CALLBACK_TOKEN?.trim()
-
-    if (!apiKey || !apiSecret || !flowId || !callbackToken) {
+    if (!apiKey || !apiSecret || !flowId) {
       throw new AppError('WORKFLOW_NOT_CONFIGURED', '合规审查服务尚未完成配置', 500)
     }
 
     this.apiKey = apiKey
     this.apiSecret = apiSecret
     this.flowId = flowId
-    this.callbackToken = callbackToken
   }
 
   async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
@@ -58,8 +54,6 @@ export class XingchenReviewProvider implements ReviewProvider {
         REVIEW_RUN_ID: input.reviewRunId,
         PROJECT_TITLE: input.projectTitle,
         FILES_JSON: JSON.stringify(input.files),
-        CALLBACK_URL: input.callbackUrl,
-        CALLBACK_TOKEN: this.callbackToken,
         AGENT_USER_INPUT: JSON.stringify(workflowInput),
       },
     })

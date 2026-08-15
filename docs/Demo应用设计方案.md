@@ -450,39 +450,35 @@ findingId
 POST /internal/provider/xingchen-callback
 ```
 
-建议用事件类型区分：
+当前 Demo 为降低星辰自定义插件接入复杂度，回调接口**不做额外 Token 鉴权**。工作流只需要提交业务回调 JSON，不需要配置 `X-RiskTrace-Callback-Token`。
+
+材料理解回调：
 
 ```json
 {
-  "eventType": "material_analysis",
   "reviewRunId": "review_xxx",
-  "attemptNo": 1,
+  "stage": "material_analysis_completed",
   "materialAnalysis": {}
 }
 ```
 
-以及：
+最终报告回调：
 
 ```json
 {
-  "eventType": "final_report",
   "reviewRunId": "review_xxx",
-  "attemptNo": 1,
+  "stage": "report_completed",
   "finalReport": {}
 }
 ```
 
-回调鉴权 Token 应作为插件/服务端机密配置，不应作为普通工作流业务参数反复暴露。
+`executeId` 为可选字段。星辰 Workflow 内部不需要知道异步启动后才返回给 RiskTrace 的 `execute_id`；如果其他 Provider 能提供 `executeId`，后端仍会校验它是否属于当前有效执行。
 
-后端依据：
-
-```text
-reviewRunId + 当前 attempt_count
-```
-
-拒绝旧尝试的迟到回调。
+为方便星辰大模型 `text` 输出直接接插件，`materialAnalysis` 与 `finalReport` 在当前 Demo 中既可以提交 JSON 对象，也可以提交包含合法 JSON 的字符串；后端会先解析再执行正式 Schema 校验。
 
 `provider_execute_id` 仍由 RiskTrace 保存，用于 Provider 状态同步和故障排查。
+
+> 该无鉴权回调仅用于当前演示 Demo。若后续部署为真实业务系统，应重新启用回调鉴权或其他可信调用机制。
 
 ---
 

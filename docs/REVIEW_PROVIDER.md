@@ -76,7 +76,7 @@ interrupted
 failed
 ```
 
-业务层不允许构造供应商专有参数名、鉴权头或 endpoint。回调鉴权令牌也由具体 Provider 从运行环境读取并封装，业务编排只提供统一回调地址。
+业务层不允许构造供应商专有参数名、鉴权头或 endpoint。当前 Demo 的 Provider 只接收统一回调地址，不额外注入回调鉴权 Header。
 
 ## 4. 运行时 Provider 绑定
 
@@ -115,7 +115,6 @@ XFYUN_API_BASE_URL=https://xingchen-api.xf-yun.com
 XFYUN_API_KEY=...
 XFYUN_API_SECRET=...
 XFYUN_FLOW_ID_REVIEW=...
-RISKTRACE_CALLBACK_TOKEN=...
 ```
 
 星辰专有的：
@@ -128,8 +127,6 @@ PROJECT_ID
 REVIEW_RUN_ID
 PROJECT_TITLE
 FILES_JSON
-CALLBACK_URL
-CALLBACK_TOKEN
 AGENT_USER_INPUT
 ```
 
@@ -151,7 +148,6 @@ DeepSeek Harness 被视为独立 Agent Runtime，而不是直接把原始 DeepSe
 REVIEW_PROVIDER=deepseek-harness
 DEEPSEEK_HARNESS_BASE_URL=https://your-harness.example.com
 DEEPSEEK_HARNESS_API_KEY=...
-RISKTRACE_CALLBACK_TOKEN=...
 ```
 
 `DEEPSEEK_HARNESS_API_KEY` 可为空；为空时不发送 `Authorization`。
@@ -179,10 +175,7 @@ Content-Type: application/json
   },
   "files": [],
   "callback": {
-    "url": "https://risktrace.example.com/internal/provider/callback",
-    "headers": {
-      "X-RiskTrace-Callback-Token": "..."
-    }
+    "url": "https://risktrace.example.com/internal/provider/callback"
   }
 }
 ```
@@ -248,15 +241,16 @@ POST {DEEPSEEK_HARNESS_BASE_URL}/runs/{executeId}/cancel
 
 ```http
 POST /internal/provider/callback
-X-RiskTrace-Callback-Token: <RISKTRACE_CALLBACK_TOKEN>
+Content-Type: application/json
 ```
 
-请求：
+当前 Demo 不要求额外回调鉴权 Header。
+
+材料理解请求：
 
 ```json
 {
   "reviewRunId": "review_xxx",
-  "executeId": "run_xxx",
   "stage": "material_analysis_completed",
   "materialAnalysis": {}
 }
@@ -267,11 +261,16 @@ X-RiskTrace-Callback-Token: <RISKTRACE_CALLBACK_TOKEN>
 ```json
 {
   "reviewRunId": "review_xxx",
-  "executeId": "run_xxx",
   "stage": "report_completed",
   "finalReport": {}
 }
 ```
+
+`executeId` 是可选字段。若 Provider 能提供它，RiskTrace 会校验该值是否等于当前 `provider_execute_id`；讯飞星辰 Workflow 无需自行获取或传入异步启动接口返回的 `execute_id`。
+
+为方便星辰大模型 `text` 输出直接接插件，`materialAnalysis` 与 `finalReport` 在当前 Demo 中既可以提交 JSON 对象，也可以提交包含合法 JSON 的字符串；后端会先解析再执行正式 Schema 校验。
+
+> 当前无鉴权回调仅用于演示 Demo；真实业务部署应重新启用鉴权或其他可信调用机制。
 
 失败：
 
