@@ -9,9 +9,10 @@
   "vars": {
     "APP_NAME": "RiskTrace",
     "APP_ENV": "production",
-    "REVIEW_PROVIDER": "mock",
+    "REVIEW_PROVIDER": "xingchen",
     "XFYUN_API_BASE_URL": "https://xingchen-api.xf-yun.com",
-    "R2_BUCKET_NAME": "risktrace-files"
+    "R2_BUCKET_NAME": "risktrace-files",
+    "XFYUN_FLOW_ID_REVIEW": "7494377322968797184"
   },
   "d1_databases": [
     {
