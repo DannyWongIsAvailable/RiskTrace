@@ -9,12 +9,25 @@ import type {
 const DEFAULT_API_BASE_URL = 'https://xingchen-api.xf-yun.com'
 const REQUEST_TIMEOUT_MS = 20_000
 
+const START_PATH = '/workflow/v1/async/chat/completions'
+const RESULT_PATH = '/workflow/v1/async/chat/result'
+const CANCEL_PATH = '/workflow/v1/async/cancel'
+
 interface XingchenResponse {
   code?: unknown
   message?: unknown
+  id?: unknown
   data?: unknown
 }
 
+/**
+ * 讯飞星辰 Workflow Provider。
+ *
+ * 当前 RiskTrace Demo 使用星辰异步工作流 API：
+ * 1. createRun() 启动工作流并保存 execute_id；
+ * 2. 工作流内部通过两个自定义插件回调 materialAnalysis / finalReport；
+ * 3. getRun() 仍可用 execute_id 查询最终 End 节点结果，作为状态同步与兜底。
+ */
 export class XingchenReviewProvider implements ReviewProvider {
   readonly name = 'xingchen' as const
 
@@ -25,11 +38,13 @@ export class XingchenReviewProvider implements ReviewProvider {
 
   constructor(env: Env) {
     this.apiBaseUrl = (env.XFYUN_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '')
+
     const apiKey = env.XFYUN_API_KEY?.trim()
     const apiSecret = env.XFYUN_API_SECRET?.trim()
     const flowId = env.XFYUN_FLOW_ID_REVIEW?.trim()
+
     if (!apiKey || !apiSecret || !flowId) {
-      throw new AppError('WORKFLOW_NOT_CONFIGURED', '合规审查服务尚未完成配置', 500)
+      throw new AppError('WORKFLOW_NOT_CONFIGURED', '合规审查服务尚未完成讯飞星辰配置', 500)
     }
 
     this.apiKey = apiKey
@@ -38,40 +53,53 @@ export class XingchenReviewProvider implements ReviewProvider {
   }
 
   async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
+    // AGENT_USER_INPUT 是星辰工作流开始节点的默认输入。
+    // 当前 Workflow 主要使用 PROJECT_* / FILES_JSON；这里仍保留一份完整上下文，便于调试。
     const workflowInput = {
       projectId: input.projectId,
       reviewRunId: input.reviewRunId,
       projectTitle: input.projectTitle,
       files: input.files,
-      callbackUrl: input.callbackUrl,
     }
-    const response = await this.post('/workflow/v1/async/chat/completions', {
+
+    const response = await this.post(START_PATH, {
       flow_id: this.flowId,
       uid: input.projectId,
       chat_id: compactChatId(input.reviewRunId),
       parameters: {
+        AGENT_USER_INPUT: JSON.stringify(workflowInput),
         PROJECT_ID: input.projectId,
         REVIEW_RUN_ID: input.reviewRunId,
         PROJECT_TITLE: input.projectTitle,
         FILES_JSON: JSON.stringify(input.files),
-        AGENT_USER_INPUT: JSON.stringify(workflowInput),
+
+        // 当前 Demo 的开始节点仍保留 ATTEMPT_NO，且回调逻辑不依赖它。
+        // 如果你从星辰开始节点删除了 ATTEMPT_NO，也可以同步删除这一行。
+        ATTEMPT_NO: '1',
       },
     })
+
     const code = readNumber(response.code)
     const data = readObject(response.data)
     const executeId = readString(data?.execute_id)
 
     if (code !== 0 || !executeId) {
-      throw new AppError('WORKFLOW_START_FAILED', '合规审查工作流启动失败', 502)
+      const providerMessage = readString(response.message)
+      throw new AppError(
+        'WORKFLOW_START_FAILED',
+        providerMessage ? `合规审查工作流启动失败：${providerMessage}` : '合规审查工作流启动失败',
+        502,
+      )
     }
 
     return { executeId }
   }
 
   async getRun(executeId: string): Promise<ProviderRunResult> {
-    const response = await this.post('/workflow/v1/async/chat/result', {
+    const response = await this.post(RESULT_PATH, {
       execute_id: executeId,
     })
+
     const code = readNumber(response.code)
     const data = readObject(response.data)
     const status = readString(data?.status)?.toLowerCase()
@@ -93,15 +121,16 @@ export class XingchenReviewProvider implements ReviewProvider {
       return { state: 'interrupted', content, providerMessage: message }
     }
 
-    return { state: 'failed', providerMessage: message }
+    return { state: 'failed', providerMessage: message ?? `未知工作流状态：${status ?? 'empty'}` }
   }
 
   async cancelRun(executeId: string): Promise<void> {
-    const response = await this.post('/workflow/v1/async/cancel', {
+    const response = await this.post(CANCEL_PATH, {
       execute_id: executeId,
     })
+
     if (readNumber(response.code) !== 0) {
-      throw new AppError('WORKFLOW_CANCEL_FAILED', '合规审查取消失败', 502)
+      throw new AppError('WORKFLOW_CANCEL_FAILED', '合规审查工作流取消失败', 502)
     }
   }
 
@@ -120,14 +149,34 @@ export class XingchenReviewProvider implements ReviewProvider {
         signal: controller.signal,
       })
 
-      if (!response.ok) {
-        throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '合规审查服务暂时不可用', 502)
+      const text = await response.text()
+      let value: unknown
+      try {
+        value = text ? JSON.parse(text) : null
+      } catch {
+        throw new AppError(
+          'WORKFLOW_PROVIDER_INVALID_RESPONSE',
+          '讯飞星辰返回了无法解析的响应',
+          502,
+        )
       }
 
-      const value: unknown = await response.json()
       const record = readObject(value)
       if (!record) {
-        throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', '合规审查服务响应格式无效', 502)
+        throw new AppError(
+          'WORKFLOW_PROVIDER_INVALID_RESPONSE',
+          '讯飞星辰响应格式无效',
+          502,
+        )
+      }
+
+      if (!response.ok) {
+        const providerMessage = readString(record.message)
+        throw new AppError(
+          'WORKFLOW_PROVIDER_UNAVAILABLE',
+          providerMessage ? `讯飞星辰请求失败：${providerMessage}` : '讯飞星辰服务暂时不可用',
+          502,
+        )
       }
 
       return record
@@ -136,10 +185,10 @@ export class XingchenReviewProvider implements ReviewProvider {
         throw error
       }
       if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new AppError('WORKFLOW_PROVIDER_TIMEOUT', '合规审查服务响应超时', 504)
+        throw new AppError('WORKFLOW_PROVIDER_TIMEOUT', '讯飞星辰服务响应超时', 504)
       }
 
-      throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '合规审查服务暂时不可用', 502)
+      throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '讯飞星辰服务暂时不可用', 502)
     } finally {
       clearTimeout(timeout)
     }
