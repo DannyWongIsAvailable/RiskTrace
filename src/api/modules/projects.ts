@@ -88,6 +88,8 @@ export function confirmDocumentUpload(
   )
 }
 
+const COMPLETE_UPLOADS_REVIEW_TIMEOUT_MS = 330_000
+
 export function completeProjectUploads(
   projectId: string,
   signal?: AbortSignal,
@@ -95,7 +97,11 @@ export function completeProjectUploads(
   return http.post<CompleteUploadsResult>(
     `/api/projects/${projectId}/uploads/complete`,
     undefined,
-    { signal, timeoutMs: 30_000 },
+    {
+      signal,
+      // 星辰同步 Workflow 后端最长等待 300 秒，这里额外预留 30 秒网络/落库余量。
+      timeoutMs: COMPLETE_UPLOADS_REVIEW_TIMEOUT_MS,
+    },
   )
 }
 

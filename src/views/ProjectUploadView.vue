@@ -34,6 +34,7 @@ const fileList = ref<UploadUserFile[]>([])
 const uploadRef = ref<UploadInstance>()
 const loading = ref(true)
 const uploading = ref(false)
+const uploadPhase = ref<'idle' | 'uploading' | 'reviewing'>('idle')
 const loadError = ref('')
 const actionError = ref('')
 const controller = new AbortController()
@@ -78,6 +79,25 @@ const reviewTone = computed<StatusTone>(() => {
 const reportReady = computed(
   () => reviewStatus.value?.reportAvailable || project.value?.status === 'completed',
 )
+const uploadActionText = computed(() => {
+  if (uploadPhase.value === 'uploading') return '正在上传材料'
+  if (uploadPhase.value === 'reviewing') return '正在执行合规审查，请勿关闭页面'
+  return '上传全部材料并开始审查'
+})
+const uploadNotice = computed(() => {
+  if (uploadPhase.value === 'reviewing') {
+    return {
+      title: '正在执行同步合规审查',
+      description:
+        '材料已上传完成，服务器正在等待讯飞星辰 Workflow 返回材料分类与最终报告。该请求可能持续数分钟，请勿关闭或刷新当前页面。',
+    }
+  }
+
+  return {
+    title: '正在上传材料',
+    description: '正在上传并确认项目材料，完成后将立即开始同步合规审查。',
+  }
+})
 
 async function loadPage(): Promise<void> {
   loading.value = true
@@ -108,6 +128,7 @@ async function handleUpload(): Promise<void> {
   }
 
   uploading.value = true
+  uploadPhase.value = 'uploading'
   actionError.value = ''
   try {
     const session = await createUploadSession(
@@ -150,22 +171,30 @@ async function handleUpload(): Promise<void> {
       }),
     )
 
+    uploadPhase.value = 'reviewing'
     const review = await completeProjectUploads(projectId.value, controller.signal)
+
     ElMessage.success(
       review.status === 'completed'
         ? '完整合规审查已完成'
-        : '材料上传完成，完整合规审查工作流已启动',
+        : '合规审查已启动，正在等待结果',
     )
     uploadRef.value?.clearFiles()
     fileList.value = []
     project.value = await getProject(projectId.value, controller.signal)
     await refreshReview()
-    schedulePoll()
+
+    // 星辰同步 Provider 正常会在 /uploads/complete 返回前完成审查。
+    // 保留 reviewing 轮询仅用于刷新旧任务或其他异步 Provider 的兼容场景。
+    if (reviewStatus.value?.status === 'reviewing') {
+      schedulePoll()
+    }
   } catch (error) {
     if (isApiError(error) && error.code === 'REQUEST_CANCELLED') return
-    actionError.value = error instanceof Error ? error.message : '材料上传或合规审查启动失败'
+    actionError.value = error instanceof Error ? error.message : '材料上传或同步合规审查失败'
   } finally {
     uploading.value = false
+    uploadPhase.value = 'idle'
   }
 }
 
@@ -292,6 +321,13 @@ onBeforeUnmount(() => {
         tone="danger"
       />
 
+      <InlineNotice
+        v-if="uploading"
+        :title="uploadNotice.title"
+        :description="uploadNotice.description"
+        tone="primary"
+      />
+
       <BaseCard
         v-if="canUpload"
         title="选择并上传材料"
@@ -322,7 +358,7 @@ onBeforeUnmount(() => {
             :disabled="fileList.length === 0"
             @click="handleUpload"
           >
-            上传全部材料并开始审查
+            {{ uploadActionText }}
           </el-button>
         </div>
       </BaseCard>

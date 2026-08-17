@@ -72,7 +72,7 @@ export async function startProjectReview(
       reviewRunId: run.id,
       projectId: input.projectId,
       code: error instanceof AppError ? error.code : 'WORKFLOW_START_FAILED',
-      message: '合规审查启动失败',
+      message: error instanceof AppError ? error.message : '合规审查启动失败',
     })
     throw error
   }
@@ -118,7 +118,7 @@ export async function retryProjectReview(
       reviewRunId: run.id,
       projectId: input.projectId,
       code: error instanceof AppError ? error.code : 'WORKFLOW_START_FAILED',
-      message: '合规审查重试启动失败',
+      message: error instanceof AppError ? error.message : '合规审查重试启动失败',
     })
     throw error
   }
