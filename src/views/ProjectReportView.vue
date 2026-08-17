@@ -34,6 +34,13 @@ const documentPendingDelete = ref<ProjectDocument>()
 const deletingDocumentId = ref('')
 const controller = new AbortController()
 const projectDocuments = computed(() => project.value?.documents ?? [])
+const materialsExpanded = ref(false)
+
+function getFileExtension(fileName: string): string {
+  const lastDot = fileName.lastIndexOf('.')
+  if (lastDot <= 0 || lastDot === fileName.length - 1) return 'FILE'
+  return fileName.slice(lastDot + 1).toUpperCase().slice(0, 5)
+}
 
 const riskMeta: Record<RiskLevel, { label: string; tone: StatusTone }> = {
   low: { label: '低风险', tone: 'success' },
@@ -135,34 +142,6 @@ onBeforeUnmount(() => controller.abort())
         tone="warning"
       />
 
-      <BaseCard
-        v-if="projectDocuments.length"
-        title="项目材料"
-        description="删除材料后，当前审查报告将立即失效，相关文件也会进入后台清理流程。"
-      >
-        <div class="project-report__document-list">
-          <div
-            v-for="document in projectDocuments"
-            :key="document.documentId"
-            class="project-report__document-row"
-          >
-            <div class="project-report__document-main">
-              <strong>{{ document.fileName }}</strong>
-              <span>{{ formatFileSize(document.sizeBytes) }}</span>
-            </div>
-            <el-button
-              type="danger"
-              link
-              :icon="AppIcons.action.delete"
-              :loading="deletingDocumentId === document.documentId"
-              @click="requestDocumentDelete(document)"
-            >
-              删除
-            </el-button>
-          </div>
-        </div>
-      </BaseCard>
-
       <MaterialAnalysisPanel v-if="materialAnalysis" :analysis="materialAnalysis" />
 
       <div class="project-report__summary-grid">
@@ -251,6 +230,47 @@ onBeforeUnmount(() => controller.abort())
           <li v-for="item in report.limitations" :key="item">{{ item }}</li>
         </ul>
       </BaseCard>
+
+      <BaseCard
+        v-if="projectDocuments.length"
+        title="项目材料"
+        description="原始材料统一收纳在报告末尾。展开后可查看文件名称、大小并执行删除操作。"
+      >
+        <template #actions>
+          <el-button link @click="materialsExpanded = !materialsExpanded">
+            {{ materialsExpanded ? '收起' : `展开（${projectDocuments.length}）` }}
+          </el-button>
+        </template>
+
+        <div v-show="materialsExpanded" class="project-report__file-grid">
+          <div
+            v-for="document in projectDocuments"
+            :key="document.documentId"
+            class="project-report__file-tile"
+          >
+            <div class="project-report__file-icon" aria-hidden="true">
+              <span>{{ getFileExtension(document.fileName) }}</span>
+            </div>
+
+            <div class="project-report__file-name" :title="document.fileName">
+              {{ document.fileName }}
+            </div>
+
+            <div class="project-report__file-meta">
+              <span>{{ formatFileSize(document.sizeBytes) }}</span>
+              <el-button
+                type="danger"
+                link
+                :icon="AppIcons.action.delete"
+                :loading="deletingDocumentId === document.documentId"
+                @click="requestDocumentDelete(document)"
+              >
+                删除
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </BaseCard>
     </template>
 
     <ConfirmActionDialog
@@ -267,39 +287,74 @@ onBeforeUnmount(() => controller.abort())
 </template>
 
 <style scoped>
-.project-report__document-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--rt-space-3);
+.project-report__file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: var(--rt-space-5) var(--rt-space-4);
+  padding-top: var(--rt-space-2);
 }
 
-.project-report__document-row {
+.project-report__file-tile {
   display: flex;
+  min-width: 0;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--rt-space-4);
-  padding: var(--rt-space-4);
+  flex-direction: column;
+  padding: var(--rt-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--rt-radius-md);
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.project-report__file-tile:hover {
+  border-color: var(--rt-border-subtle);
+}
+
+.project-report__file-icon {
+  display: flex;
+  width: 58px;
+  height: 68px;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 6px 9px;
   border: 1px solid var(--rt-border-subtle);
   border-radius: var(--rt-radius-md);
 }
 
-.project-report__document-main {
-  min-width: 0;
-}
-
-.project-report__document-main strong,
-.project-report__document-main span {
-  display: block;
-}
-
-.project-report__document-main strong {
+.project-report__file-icon span {
   overflow: hidden;
-  color: var(--rt-text-primary);
+  width: 100%;
+  color: var(--rt-text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.project-report__document-main span {
+.project-report__file-name {
+  display: -webkit-box;
+  overflow: hidden;
+  width: 100%;
+  min-height: 38px;
+  margin-top: var(--rt-space-2);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--rt-text-primary);
+  font-size: var(--rt-font-size-sm);
+  line-height: 19px;
+  text-align: center;
+  word-break: break-all;
+}
+
+.project-report__file-meta {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: var(--rt-space-2);
   margin-top: var(--rt-space-1);
   color: var(--rt-text-tertiary);
   font-size: var(--rt-font-size-xs);
@@ -365,6 +420,10 @@ onBeforeUnmount(() => controller.abort())
 }
 
 @media (max-width: 760px) {
+  .project-report__file-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .project-report__summary-grid,
   .project-report__finding-grid {
     grid-template-columns: 1fr;
