@@ -151,29 +151,16 @@ export async function updateReviewState(
 
 export async function markMaterialAnalysisSaved(
   db: D1Database,
-  input: { reviewRunId: string; projectId: string; now: string; stage?: ReviewStage },
+  input: { reviewRunId: string; projectId: string; now: string },
 ): Promise<void> {
-  const stage = input.stage ?? 'material_analysis_completed'
-  const progress = stage === 'material_analysis_completed' ? 40 : stage === 'domain_review_running' ? 65 : 85
-
-  await db.batch([
-    db
-      .prepare(
-        `UPDATE review_runs
-         SET status = 'reviewing', stage = ?, provider_status = 'running', progress = ?,
-             material_analysis_saved_at = COALESCE(material_analysis_saved_at, ?),
-             error_code = NULL, error_message = NULL, updated_at = ?
-         WHERE id = ?`,
-      )
-      .bind(stage, progress, input.now, input.now, input.reviewRunId),
-    db
-      .prepare(
-        `UPDATE projects
-         SET status = 'reviewing', stage = ?, updated_at = ?
-         WHERE id = ?`,
-      )
-      .bind(stage, input.now, input.projectId),
-  ])
+  await db
+    .prepare(
+      `UPDATE review_runs
+       SET material_analysis_saved_at = COALESCE(material_analysis_saved_at, ?), updated_at = ?
+       WHERE id = ? AND project_id = ?`,
+    )
+    .bind(input.now, input.now, input.reviewRunId, input.projectId)
+    .run()
 }
 
 export async function prepareReviewRetry(

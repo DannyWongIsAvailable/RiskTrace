@@ -4,7 +4,6 @@ import { startProjectReview } from '../../../../_shared/review-service'
 import { getPathParam } from '../../../../_shared/route'
 
 export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async ({
-  request,
   params,
   env,
   data,
@@ -12,7 +11,6 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
   const projectId = getPathParam(params, 'projectId')
   const run = await startProjectReview(env, {
     projectId,
-    requestOrigin: new URL(request.url).origin,
   })
 
   return success(
@@ -27,7 +25,7 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
     },
     {
       status: 202,
-      message: '材料上传已完成，合规审查已启动',
+      message: '材料上传已完成，完整合规审查工作流已启动',
       requestId: data.requestId,
     },
   )

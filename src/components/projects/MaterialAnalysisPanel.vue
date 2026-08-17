@@ -24,7 +24,7 @@ const completenessMeta = computed<{ label: string; tone: StatusTone }>(() => {
   <section class="material-analysis-panel">
     <SectionHeader
       title="材料理解结果"
-      description="材料理解结果已保存；系统将继续执行领域审查并生成合规审查报告。"
+      description="完整合规审查工作流已结束；以下为工作流最终返回并保存的材料分类结果。"
     />
 
     <div class="material-analysis-panel__summary-grid">

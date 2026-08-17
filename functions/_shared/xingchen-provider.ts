@@ -25,8 +25,8 @@ interface XingchenResponse {
  *
  * 当前 RiskTrace Demo 使用星辰异步工作流 API：
  * 1. createRun() 启动工作流并保存 execute_id；
- * 2. 工作流内部通过两个自定义插件回调 materialAnalysis / finalReport；
- * 3. getRun() 仍可用 execute_id 查询最终 End 节点结果，作为状态同步与兜底。
+ * 2. 工作流内部一次性完成材料理解、领域审查和报告聚合；
+ * 3. getRun() 通过 execute_id 查询 End 节点最终结果，最终结果必须同时包含 materialAnalysis 与 finalReport。
  */
 export class XingchenReviewProvider implements ReviewProvider {
   readonly name = 'xingchen' as const
@@ -73,8 +73,7 @@ export class XingchenReviewProvider implements ReviewProvider {
         PROJECT_TITLE: input.projectTitle,
         FILES_JSON: JSON.stringify(input.files),
 
-        // 当前 Demo 的开始节点仍保留 ATTEMPT_NO，且回调逻辑不依赖它。
-        // 如果你从星辰开始节点删除了 ATTEMPT_NO，也可以同步删除这一行。
+        // 保留尝试编号，便于工作流日志定位；RiskTrace 不再依赖工作流回调。
         ATTEMPT_NO: '1',
       },
     })
@@ -100,28 +99,7 @@ export class XingchenReviewProvider implements ReviewProvider {
       execute_id: executeId,
     })
 
-    const code = readNumber(response.code)
-    const data = readObject(response.data)
-    const status = readString(data?.status)?.toLowerCase()
-    const output = readObject(data?.output)
-    const content = stringifyProviderContent(output?.content)
-    const message = readString(response.message) ?? undefined
-
-    if (code !== 0) {
-      return { state: 'failed', providerMessage: message }
-    }
-
-    if (status === 'running') {
-      return { state: 'running' }
-    }
-    if (status === 'success') {
-      return { state: 'succeeded', content }
-    }
-    if (status === 'interrupt') {
-      return { state: 'interrupted', content, providerMessage: message }
-    }
-
-    return { state: 'failed', providerMessage: message ?? `未知工作流状态：${status ?? 'empty'}` }
+    return normalizeXingchenRunResult(response)
   }
 
   async cancelRun(executeId: string): Promise<void> {
@@ -213,9 +191,81 @@ function readNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function stringifyProviderContent(value: unknown): string {
-  if (typeof value === 'string') {
-    return value
+/**
+ * 将星辰异步结果接口的官方响应结构归一化为 RiskTrace ProviderRunResult。
+ *
+ * 星辰成功响应的最终业务输出位于：
+ * data.output.content
+ *
+ * content 按星辰协议是字符串；RiskTrace 后续会在 review-service 中将该字符串
+ * JSON.parse 为 { materialAnalysis, finalReport } 并执行领域校验。
+ */
+function normalizeXingchenRunResult(response: XingchenResponse): ProviderRunResult {
+  const code = readNumber(response.code)
+  const message = readString(response.message) ?? undefined
+
+  if (code !== 0) {
+    return {
+      state: 'failed',
+      providerMessage: message ?? `讯飞星辰返回错误码：${code ?? 'unknown'}`,
+    }
   }
-  return value === undefined ? '' : JSON.stringify(value)
+
+  const data = readObject(response.data)
+  if (!data) {
+    return {
+      state: 'failed',
+      providerMessage: '讯飞星辰结果响应缺少 data',
+    }
+  }
+
+  const rawStatus = readString(data.status)
+  const status = rawStatus?.toLowerCase()
+
+  if (status === 'running') {
+    return { state: 'running' }
+  }
+
+  const output = readObject(data.output)
+  const contentValue = output?.content
+  const content = typeof contentValue === 'string' ? contentValue.trim() : undefined
+
+  if (status === 'success') {
+    if (!output) {
+      return {
+        state: 'failed',
+        providerMessage: '讯飞星辰工作流已完成，但结果缺少 data.output',
+      }
+    }
+    if (typeof contentValue !== 'string') {
+      return {
+        state: 'failed',
+        providerMessage: '讯飞星辰工作流已完成，但 data.output.content 不是字符串',
+      }
+    }
+    if (!content) {
+      return {
+        state: 'failed',
+        providerMessage: '讯飞星辰工作流已完成，但结束节点未返回结果内容',
+      }
+    }
+
+    return {
+      state: 'succeeded',
+      content,
+    }
+  }
+
+  if (status === 'interrupt') {
+    return {
+      state: 'interrupted',
+      content,
+      providerMessage: message ?? '讯飞星辰工作流进入中断状态',
+    }
+  }
+
+  return {
+    state: 'failed',
+    providerMessage: message ?? `未知工作流状态：${rawStatus ?? 'empty'}`,
+  }
 }

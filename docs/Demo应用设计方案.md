@@ -78,7 +78,7 @@ Mock 的请求和响应字段尽量贴近讯飞星辰 Workflow 异步 API：
 
 这里与正式星辰有一个**有意的 Demo 差异**：
 
-- 正式星辰异步接口启动后只返回执行标识，结果随后通过工作流回调或异步结果查询获得；
+- 正式星辰异步接口启动后只返回执行标识，RiskTrace 随后通过异步结果查询获取最终结果；
 - Demo Mock 在同一次服务端调用中直接生成 `materialAnalysis` 与 `finalReport`；
 - 因此 Demo Mock **不需要前端轮询，也不需要 Mock result 查询接口**；
 - Mock 的 `execute_id` 仍然生成并保存，用于保持数据库、日志和正式接入结构一致；
@@ -95,15 +95,15 @@ RiskTrace
 → POST /workflow/v1/async/chat/completions
 → 星辰返回 execute_id
 → RiskTrace 保存 provider_execute_id
-→ 同一条工作流完成材料理解
-→ 工作流 POST 材料理解结果到 RiskTrace
-→ 同一条工作流继续领域审查
-→ 聚合 Agent 生成最终报告
-→ 工作流 POST 最终报告到 RiskTrace
-→ End 节点仍输出 finalReport，作为服务端同步/兜底来源
+→ 同一条工作流内部完成材料理解、领域审查和报告聚合
+→ RiskTrace 使用 execute_id 查询 /workflow/v1/async/chat/result
+→ running：继续等待
+→ success：End 节点一次性返回 materialAnalysis + finalReport
+→ RiskTrace 完整校验两部分结果后分别落库
+→ completed / report_completed
 ```
 
-正式模式可以由服务端使用 `execute_id` 查询星辰异步执行结果做异常兜底；这不是 Demo 前端必须承担的轮询机制。
+正式模式不再使用任何 RiskTrace 回调插件或内部回调接口。前端只轮询 RiskTrace 的 `/api/projects/:projectId/review`，由后端负责同步 Provider 状态。
 
 ---
 
@@ -332,11 +332,13 @@ FILES / FILES_JSON
 AGENT_USER_INPUT
 ```
 
-如果需要防止重试后的迟到回调覆盖当前运行，应额外传入由 RiskTrace 生成的本次尝试标识，例如：
+可以额外传入：
 
 ```text
 ATTEMPT_NO
 ```
+
+用于工作流日志定位当前尝试；正式结果只认 RiskTrace 当前保存的 `provider_execute_id`。
 
 不要要求星辰工作流内部必须知道 `execute_id`。
 
@@ -442,43 +444,20 @@ findingId
 
 ---
 
-## 13. 正式工作流回调
+## 13. 正式工作流最终输出
 
-正式环境可以继续使用：
-
-```text
-POST /internal/provider/xingchen-callback
-```
-
-当前 Demo 为降低星辰自定义插件接入复杂度，回调接口**不做额外 Token 鉴权**。工作流只需要提交业务回调 JSON，不需要配置 `X-RiskTrace-Callback-Token`。
-
-材料理解回调：
+正式环境不再提供或使用工作流回调接口。星辰工作流在 End 节点一次性输出：
 
 ```json
 {
-  "reviewRunId": "review_xxx",
-  "stage": "material_analysis_completed",
-  "materialAnalysis": {}
-}
-```
-
-最终报告回调：
-
-```json
-{
-  "reviewRunId": "review_xxx",
-  "stage": "report_completed",
+  "materialAnalysis": {},
   "finalReport": {}
 }
 ```
 
-`executeId` 为可选字段。星辰 Workflow 内部不需要知道异步启动后才返回给 RiskTrace 的 `execute_id`；如果其他 Provider 能提供 `executeId`，后端仍会校验它是否属于当前有效执行。
+RiskTrace 只通过当前运行保存的 `provider_execute_id` 查询异步结果。Provider 返回 `success` 后，后端必须先同时完成材料理解结果和最终报告的 Schema 校验，再写入 `review_results` 和 `project_documents`。
 
-为方便星辰大模型 `text` 输出直接接插件，`materialAnalysis` 与 `finalReport` 在当前 Demo 中既可以提交 JSON 对象，也可以提交包含合法 JSON 的字符串；后端会先解析再执行正式 Schema 校验。
-
-`provider_execute_id` 仍由 RiskTrace 保存，用于 Provider 状态同步和故障排查。
-
-> 该无鉴权回调仅用于当前演示 Demo。若后续部署为真实业务系统，应重新启用回调鉴权或其他可信调用机制。
+如果缺少任一部分、JSON 无效、枚举值不合法或引用了非当前项目文件，整个审查标记为失败，不保存半成品正式结果。
 
 ---
 
@@ -525,19 +504,18 @@ GET report
 
 ## 15. 状态机
 
-正式模式：
+正式模式对前端的主状态为：
 
 ```text
 draft / waiting_for_upload
 → uploading / uploading_files
 → reviewing / material_analysis_running
-→ reviewing / material_analysis_completed
-→ reviewing / domain_review_running
-→ reviewing / report_aggregating
 → completed / report_completed
 ```
 
-Demo Mock 可以在一次请求中依次写入这些阶段，但对前端最终可见的正常终态为：
+工作流内部仍可以有材料理解、领域审查和报告聚合节点，但不再依赖这些内部节点向 RiskTrace 回传中间阶段。旧阶段枚举继续保留用于兼容历史数据。
+
+Demo Mock 对前端最终可见的正常终态为：
 
 ```text
 completed / report_completed
@@ -560,7 +538,7 @@ failed / failed
 - 重试不会新建第二个 `review_runs`；
 - `review_results` 以 `(review_run_id, result_type)` 唯一；
 - 同类结果重复提交执行幂等更新；
-- 已完成运行不因迟到回调重新打开；
+- 已完成运行不会被后续轮询重新打开；
 - Demo Mock 重复调用 `uploads/complete` 时，应返回已有完成结果，而不是重复创建第二条运行。
 
 ---
@@ -630,14 +608,14 @@ Demo 模式不展示“为了等待 Mock 自己变化而轮询”的过程动画
 - 路由 Agent；
 - 4 个领域 Agent；
 - 聚合 Agent；
-- 两次 RiskTrace 回调；
-- End 输出 finalReport。
+- End 一次性输出 `materialAnalysis + finalReport`；
+- RiskTrace 通过 `execute_id` 查询最终结果，不配置回调插件。
 
 ### 阶段 4：异常与重试
 
 - `attempt_count`；
-- 迟到回调拒绝；
-- Provider 状态兜底；
+- 当前 `provider_execute_id` 绑定；
+- Provider 状态同步；
 - 失败重试；
 - 页面刷新恢复。
 
@@ -675,11 +653,11 @@ Demo 模式不展示“为了等待 Mock 自己变化而轮询”的过程动画
 
 - [ ] 一个审查运行只启动一条工作流；
 - [ ] 星辰返回的 `execute_id` 保存到 `provider_execute_id`；
-- [ ] 材料理解通过同一执行实例回调；
-- [ ] 同一执行继续领域审查和聚合；
-- [ ] 最终报告回调并落库；
-- [ ] End 节点保留 finalReport 输出作为兜底；
-- [ ] 旧 attempt 回调不会覆盖当前运行。
+- [ ] 同一执行完成材料理解、领域审查和聚合；
+- [ ] End 节点一次性返回 `materialAnalysis + finalReport`；
+- [ ] RiskTrace 使用 `execute_id` 查询最终结果；
+- [ ] 两部分结果完整校验后再落库；
+- [ ] 不存在 RiskTrace 回调插件或回调接口依赖。
 
 ### 前端
 
@@ -749,9 +727,10 @@ Demo：
 项目标题
 → 上传全部材料
 → 启动一条星辰异步工作流
-→ 材料理解回调
-→ 同一执行继续领域审查
-→ 最终报告回调
+→ 同一执行完成材料理解、领域审查和报告聚合
+→ RiskTrace 轮询 execute_id 对应结果
+→ End 一次性返回 materialAnalysis + finalReport
+→ 完整校验并落库
 → 报告展示
 ```
 

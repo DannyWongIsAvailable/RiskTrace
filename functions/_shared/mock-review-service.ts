@@ -15,10 +15,6 @@ import type {
 } from './review-provider'
 import { findReviewResult } from './result-repository'
 
-const DOMAIN_REVIEW_DELAY_MS = 2_000
-const REPORT_AGGREGATION_DELAY_MS = 4_000
-const REPORT_COMPLETION_DELAY_MS = 6_000
-
 const CATEGORY_MISSING_LABELS: Partial<Record<MaterialCategory, string>> = {
   '采购立项与审批': '采购申请或预算审批材料',
   '供应商与寻源': '供应商资料或比价定标材料',
@@ -57,10 +53,10 @@ export class MockReviewProvider implements ReviewProvider {
     return {
       executeId,
       initialResult: {
-        state: 'running',
+        state: 'succeeded',
         content: JSON.stringify({
-          stage: 'material_analysis_completed',
           materialAnalysis,
+          finalReport: buildReport(materialAnalysis),
         }),
       },
     }
@@ -69,28 +65,13 @@ export class MockReviewProvider implements ReviewProvider {
   async getRun(executeId: string): Promise<ProviderRunResult> {
     const execution = parseMockExecuteId(executeId)
     const materialAnalysis = await this.readMaterialAnalysis(execution.reviewRunId)
-    const elapsedMs = Date.now() - execution.startedAt
-
-    if (elapsedMs >= REPORT_COMPLETION_DELAY_MS) {
-      return {
-        state: 'succeeded',
-        content: JSON.stringify({
-          stage: 'report_completed',
-          finalReport: buildReport(materialAnalysis),
-        }),
-      }
-    }
-
-    const stage =
-      elapsedMs >= REPORT_AGGREGATION_DELAY_MS
-        ? 'report_aggregating'
-        : elapsedMs >= DOMAIN_REVIEW_DELAY_MS
-          ? 'domain_review_running'
-          : 'material_analysis_completed'
 
     return {
-      state: 'running',
-      content: JSON.stringify({ stage, materialAnalysis }),
+      state: 'succeeded',
+      content: JSON.stringify({
+        materialAnalysis,
+        finalReport: buildReport(materialAnalysis),
+      }),
     }
   }
 

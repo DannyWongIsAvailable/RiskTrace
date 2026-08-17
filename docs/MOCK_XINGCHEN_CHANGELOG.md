@@ -62,7 +62,7 @@ POST /api/mock/workflow/v1/async/chat/completions
 
 ## 与真实星辰的边界
 
-真实星辰异步启动主要返回 `execute_id`，随后通过回调或异步结果接口获取执行结果。
+真实星辰异步启动主要返回 `execute_id`，RiskTrace 随后只通过异步结果接口查询执行结果；工作流成功后一次性返回 `materialAnalysis + finalReport`。
 
 本 Mock 为了 Demo **有意扩展**：
 

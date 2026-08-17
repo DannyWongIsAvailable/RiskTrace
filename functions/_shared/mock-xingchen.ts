@@ -9,7 +9,7 @@
  * Production Xingchen:
  *   POST /workflow/v1/async/chat/completions
  *   -> { code, message, id, data: { execute_id } }
- *   -> later callbacks / async result query
+ *   -> final output retrieval / async result query
  *
  * Demo Mock:
  *   mockXingchenChatCompletions(...)

@@ -4,7 +4,6 @@ import { retryProjectReview } from '../../../../_shared/review-service'
 import { getPathParam } from '../../../../_shared/route'
 
 export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async ({
-  request,
   params,
   env,
   data,
@@ -12,7 +11,6 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
   const projectId = getPathParam(params, 'projectId')
   const run = await retryProjectReview(env, {
     projectId,
-    requestOrigin: new URL(request.url).origin,
   })
 
   return success(
@@ -26,7 +24,7 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
     },
     {
       status: 202,
-      message: '合规审查已重新启动',
+      message: '完整合规审查工作流已重新启动',
       requestId: data.requestId,
     },
   )

@@ -91,11 +91,7 @@ export interface CompleteUploadsResult {
   projectId: string
   reviewRunId: string
   status: 'reviewing' | 'completed'
-  stage:
-    | 'material_analysis_completed'
-    | 'domain_review_running'
-    | 'report_aggregating'
-    | 'report_completed'
+  stage: Exclude<ProjectStage, 'waiting_for_upload' | 'uploading_files' | 'failed'>
   materialAnalysisUrl: string
   pollUrl: string
   reportUrl: string

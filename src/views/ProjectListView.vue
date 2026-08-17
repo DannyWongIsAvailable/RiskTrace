@@ -34,10 +34,10 @@ const statusMeta: Record<ProjectStatus, { label: string; tone: StatusTone }> = {
 const stageLabels: Record<ProjectStage, string> = {
   waiting_for_upload: '等待上传材料',
   uploading_files: '材料上传中',
-  material_analysis_running: '材料理解中',
-  material_analysis_completed: '材料理解已完成',
-  domain_review_running: '领域审查中',
-  report_aggregating: '报告生成中',
+  material_analysis_running: '完整合规审查中',
+  material_analysis_completed: '完整合规审查中',
+  domain_review_running: '完整合规审查中',
+  report_aggregating: '完整合规审查中',
   report_completed: '报告已生成',
   failed: '审查失败',
 }

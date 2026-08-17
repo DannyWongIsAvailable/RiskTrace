@@ -40,9 +40,6 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
         projectTitle: input.projectTitle,
       },
       files: input.files,
-      callback: {
-        url: input.callbackUrl,
-      },
     })
 
     const executeId = readRunId(response)

@@ -54,14 +54,11 @@ const activeStep = computed(() => {
       return 0
     case 'material_analysis_running':
     case 'material_analysis_completed':
-      return 1
     case 'domain_review_running':
-      return 2
     case 'report_aggregating':
-      return 3
-    case 'report_completed':
-      return 4
     case 'failed':
+      return 1
+    case 'report_completed':
       return 2
   }
 })
@@ -153,8 +150,12 @@ async function handleUpload(): Promise<void> {
       }),
     )
 
-    await completeProjectUploads(projectId.value, controller.signal)
-    ElMessage.success('材料理解结果已生成，系统正在继续执行合规审查')
+    const review = await completeProjectUploads(projectId.value, controller.signal)
+    ElMessage.success(
+      review.status === 'completed'
+        ? '完整合规审查已完成'
+        : '材料上传完成，完整合规审查工作流已启动',
+    )
     uploadRef.value?.clearFiles()
     fileList.value = []
     project.value = await getProject(projectId.value, controller.signal)
@@ -172,7 +173,11 @@ async function refreshReview(): Promise<void> {
   const status = await getProjectReviewStatus(projectId.value, controller.signal)
   reviewStatus.value = status
 
-  if (status.materialAnalysisAvailable && !materialAnalysis.value) {
+  if (
+    status.status === 'completed' &&
+    status.materialAnalysisAvailable &&
+    !materialAnalysis.value
+  ) {
     materialAnalysis.value = await getProjectMaterialAnalysis(
       projectId.value,
       controller.signal,
@@ -218,10 +223,10 @@ function stageLabel(stage: ProjectStage): string {
   const labels: Record<ProjectStage, string> = {
     waiting_for_upload: '等待上传材料',
     uploading_files: '材料上传中',
-    material_analysis_running: '正在理解和分类材料',
-    material_analysis_completed: '材料理解结果已生成，正在继续审查',
-    domain_review_running: '正在执行领域合规审查',
-    report_aggregating: '正在聚合风险并生成合规审查报告',
+    material_analysis_running: '完整合规审查工作流正在执行',
+    material_analysis_completed: '完整合规审查工作流正在执行',
+    domain_review_running: '完整合规审查工作流正在执行',
+    report_aggregating: '完整合规审查工作流正在执行',
     report_completed: '合规审查报告已生成',
     failed: '合规审查失败',
   }
@@ -264,16 +269,15 @@ onBeforeUnmount(() => {
     <template v-else-if="project">
       <InlineNotice
         title="自动审查流程"
-        description="材料上传完成后，系统会持续推进材料理解、领域审查和报告聚合，并在各阶段更新当前进度。"
+        description="材料上传完成后，系统会启动一条完整工作流；工作流结束后一次性生成材料分类与最终报告。"
         tone="primary"
       />
 
       <BaseCard title="自动审查进度" :description="reviewMessage">
         <el-steps :active="activeStep" finish-status="success" align-center>
           <el-step title="上传材料" />
-          <el-step title="材料分类" />
-          <el-step title="领域审查" />
-          <el-step title="生成报告" />
+          <el-step title="自动合规审查" />
+          <el-step title="生成结果" />
         </el-steps>
         <div v-if="project.review" class="project-upload__progress">
           <StatusTag :label="stageLabel(currentStage)" :tone="reviewTone" />
@@ -351,7 +355,7 @@ onBeforeUnmount(() => {
       <InlineNotice
         v-if="reportReady"
         title="合规审查报告已生成"
-        description="材料理解结果仍保留在当前页面，可进入只读报告查看风险事项和关联文件。"
+        description="工作流已一次性返回材料分类与最终报告；材料理解结果保留在当前页面，可进入只读报告查看风险事项和关联文件。"
         tone="success"
       >
         <template #actions>

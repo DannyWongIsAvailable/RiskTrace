@@ -20,12 +20,11 @@ Provider 适配、环境变量和 DeepSeek Harness HTTP 契约见 `docs/REVIEW_P
 → 一次性上传全部材料
 → 上传批次完成后创建一个审查运行
 → 通过 ReviewProvider 启动一次完整审查执行
-→ 材料理解、自动分类、逐文件摘要和完整性检查
-→ 同一 Provider 执行输出材料理解中间结果，API 校验并保存
-→ 同一 Provider 执行继续执行路由 Agent 和领域 Agent
-→ 聚合 Agent 生成最终风险报告
-→ API 校验文件引用和字段结构并保存 D1
-→ 前端通过 RiskTrace API 展示进度、中间结果和最终报告
+→ 同一 Provider 执行完成材料理解、自动分类、领域审查和报告聚合
+→ RiskTrace 持续使用同一个 executeId 查询执行状态
+→ Provider 成功后一次性返回 materialAnalysis + finalReport
+→ API 先完整校验两部分结果，再分别保存 D1
+→ 前端通过 RiskTrace API 展示整体执行状态、材料分类和最终报告
 ```
 
 整个流程不要求用户手工分类、确认材料理解结果或再次点击“发起审查”。材料理解和报告聚合属于同一个 Provider 执行实例，不拆成两次外部执行。
@@ -39,7 +38,7 @@ Provider 适配、环境变量和 DeepSeek Harness HTTP 契约见 `docs/REVIEW_P
 - 文件直接上传私有 Cloudflare R2；
 - 上传完成后自动创建一个审查运行并通过当前配置的 Review Provider 启动执行；
 - 自动生成材料名称、类别、逐文件摘要、项目摘要和完整性结果；
-- 在工作流继续运行时展示已保存的材料理解中间结果；
+- 工作流运行期间只展示整体执行状态，完成后一次性展示材料理解结果和最终报告；
 - 由路由 Agent 选择适用领域 Agent；
 - 领域 Agent 结合材料对象和原始文件执行审查；
 - 聚合 Agent 输出只读风险报告；
@@ -116,7 +115,7 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、Provider �
 - 讯飞星辰 Provider 负责星辰专有认证、参数名和 Workflow API；
 - DeepSeek Harness Provider 负责 Harness HTTP 契约和运行状态归一化；
 - 一次审查运行持久化 `provider_name + provider_execute_id`，运行中的任务不会因默认 Provider 切换而串到另一平台；
-- 材料理解结果和最终报告仍属于同一次 Provider 执行中的不同业务输出。
+- 材料理解结果和最终报告由同一次 Provider 执行在成功终态一次性返回。
 - 前端和业务 API 只暴露材料理解、审查阶段和报告等业务语义，不暴露或判断具体 Provider。
 
 ## 6. 目标页面与路由
@@ -126,13 +125,13 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、Provider �
 | `/dashboard` | 审查总览 | 展示项目状态、审查进度、报告与风险事项统计 |
 | `/projects` | 采购项目列表 | 查询项目和进入新建流程 |
 | `/projects/new` | 新建采购项目 | 填写项目标题并一次性上传材料 |
-| `/projects/:projectId/upload` | 项目材料与审查进度 | 上传材料、展示材料理解结果并轮询审查状态 |
+| `/projects/:projectId/upload` | 项目材料与审查进度 | 上传材料、轮询工作流状态，并在完成后展示材料理解结果 |
 | `/projects/:projectId/report` | 合规审查报告 | 展示只读风险报告和关联文件 |
 | `/foundation` | 设计系统 | 仅开发环境使用的基础组件预览 |
 
 处置中心和规则中心不属于当前 Demo 范围，不应作为当前版本的业务导航或开发目标。
 
-当前仓库已经完成前端工程底座、审查总览与采购项目四个主流程页面、项目/上传/统计 API、D1/R2 读写、统一 Review Provider、审查回调、结果校验和报告读取。
+当前仓库已经完成前端工程底座、审查总览与采购项目四个主流程页面、项目/上传/统计 API、D1/R2 读写、统一 Review Provider、异步结果查询、结果校验和报告读取。
 
 ## 7. 目录约定
 
@@ -149,7 +148,6 @@ src/icons/              图标统一出口
 src/mocks/              明确标识的演示数据
 src/styles/             全局设计系统
 functions/api/          对外 REST API
-functions/internal/     工作流回调等受控内部接口
 functions/_shared/      后端共享能力、Provider、校验和持久化
 ```
 
@@ -245,7 +243,7 @@ pnpm cf:deploy
 - 顶层业务对象统一使用“采购项目”和 `project` 命名；
 - 一个审查运行只启动一次从材料理解贯通到报告聚合的 Provider 执行；
 - 不得为材料理解和领域审查分别创建两个 Provider 执行或两个 `executeId`；
-- 同一次运行的材料理解中间结果和最终报告分别校验、幂等保存；
+- Provider 成功后必须一次性返回材料理解结果和最终报告，两部分完整校验后再分别幂等保存；
 - Vue 组件和 Pinia Store 不得直接调用 `fetch`；
 - 浏览器请求统一经过 `src/api/request.ts` 与 `src/api/modules/`；
 - 前端不得直接访问数据库、对象存储或外部工作流；

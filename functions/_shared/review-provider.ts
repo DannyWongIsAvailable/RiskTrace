@@ -15,15 +15,11 @@ export interface CreateReviewRunInput {
   reviewRunId: string
   projectTitle: string
   files: ReviewProviderFile[]
-  callbackUrl: string
 }
 
 export interface ProviderRunResult {
   state: 'running' | 'succeeded' | 'interrupted' | 'failed'
-  /**
-   * Provider-neutral review output. It may contain an intermediate materialAnalysis while the run
-   * is still running, or the final report once the run succeeds.
-   */
+  /** Provider-neutral final output. A succeeded run must return materialAnalysis + finalReport. */
   content?: string
   providerMessage?: string
 }
