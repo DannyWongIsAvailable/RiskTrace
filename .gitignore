@@ -44,3 +44,4 @@ Thumbs.db
 /cypress/screenshots/
 __screenshots__/
 /.env
+/migrations/
