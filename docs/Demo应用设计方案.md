@@ -504,16 +504,27 @@ GET report
 
 ## 15. 状态机
 
-正式模式对前端的主状态为：
+正式模式对前端的主流程展示为四步：
+
+```text
+上传材料
+→ 材料理解
+→ 自动合规审查
+→ 生成结果
+```
+
+对应后端阶段：
 
 ```text
 draft / waiting_for_upload
 → uploading / uploading_files
-→ reviewing / material_analysis_running
+→ reviewing / material_analysis_completed
+→ reviewing / domain_review_running
+→ reviewing / report_aggregating
 → completed / report_completed
 ```
 
-工作流内部仍可以有材料理解、领域审查和报告聚合节点，但不再依赖这些内部节点向 RiskTrace 回传中间阶段。旧阶段枚举继续保留用于兼容历史数据。
+`uploads/complete` 在确认全部材料已经由后端保存后，先把运行置为 `material_analysis_completed`；启动 Provider 前进入 `domain_review_running`。材料理解结果正式保存后进入 `report_aggregating`，最终报告保存后进入 `report_completed`。旧阶段枚举继续保留用于兼容历史数据。
 
 Demo Mock 对前端最终可见的正常终态为：
 

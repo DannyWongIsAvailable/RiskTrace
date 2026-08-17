@@ -12,13 +12,13 @@ export async function createOrGetReviewRun(
         `INSERT OR IGNORE INTO review_runs (
           id, project_id, status, stage, provider_status, progress,
           attempt_count, started_at, updated_at
-        ) VALUES (?, ?, 'reviewing', 'material_analysis_running', 'pending', 20, 0, ?, ?)`,
+        ) VALUES (?, ?, 'reviewing', 'material_analysis_completed', 'pending', 40, 0, ?, ?)`,
       )
       .bind(input.id, input.projectId, input.now, input.now),
     db
       .prepare(
         `UPDATE projects
-         SET status = 'reviewing', stage = 'material_analysis_running', updated_at = ?
+         SET status = 'reviewing', stage = 'material_analysis_completed', updated_at = ?
          WHERE id = ? AND status IN ('draft', 'uploading')`,
       )
       .bind(input.now, input.projectId),
@@ -75,7 +75,7 @@ export async function claimReviewRunStart(
     .prepare(
       `UPDATE review_runs
        SET provider_name = ?, provider_status = 'starting', status = 'reviewing',
-           stage = 'material_analysis_running', progress = 20,
+           stage = 'domain_review_running', progress = 60,
            attempt_count = attempt_count + 1,
            error_code = NULL, error_message = NULL,
            finished_at = NULL, updated_at = ?
@@ -153,14 +153,23 @@ export async function markMaterialAnalysisSaved(
   db: D1Database,
   input: { reviewRunId: string; projectId: string; now: string },
 ): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE review_runs
-       SET material_analysis_saved_at = COALESCE(material_analysis_saved_at, ?), updated_at = ?
-       WHERE id = ? AND project_id = ?`,
-    )
-    .bind(input.now, input.now, input.reviewRunId, input.projectId)
-    .run()
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE review_runs
+         SET material_analysis_saved_at = COALESCE(material_analysis_saved_at, ?),
+             stage = 'report_aggregating', progress = 90, updated_at = ?
+         WHERE id = ? AND project_id = ? AND status = 'reviewing'`,
+      )
+      .bind(input.now, input.now, input.reviewRunId, input.projectId),
+    db
+      .prepare(
+        `UPDATE projects
+         SET status = 'reviewing', stage = 'report_aggregating', updated_at = ?
+         WHERE id = ? AND status = 'reviewing'`,
+      )
+      .bind(input.now, input.projectId),
+  ])
 }
 
 export async function prepareReviewRetry(
@@ -173,8 +182,8 @@ export async function prepareReviewRetry(
         // provider_name is introduced by migrations/0002_review_provider.sql.
         // noinspection SqlResolve
         `UPDATE review_runs
-         SET status = 'reviewing', stage = 'material_analysis_running',
-             provider_name = NULL, provider_execute_id = NULL, provider_status = 'pending', progress = 20,
+         SET status = 'reviewing', stage = 'domain_review_running',
+             provider_name = NULL, provider_execute_id = NULL, provider_status = 'pending', progress = 60,
              error_code = NULL, error_message = NULL, finished_at = NULL, updated_at = ?
          WHERE id = ? AND status = 'failed'`,
       )
@@ -182,7 +191,7 @@ export async function prepareReviewRetry(
     db
       .prepare(
         `UPDATE projects
-         SET status = 'reviewing', stage = 'material_analysis_running', updated_at = ?
+         SET status = 'reviewing', stage = 'domain_review_running', updated_at = ?
          WHERE id = ?`,
       )
       .bind(input.now, input.projectId),

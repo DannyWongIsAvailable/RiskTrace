@@ -252,9 +252,9 @@ async function applyProviderRunResult(
         reviewRunId: currentRun.id,
         projectId: currentRun.project_id,
         status: 'reviewing',
-        stage: 'material_analysis_running',
+        stage: 'domain_review_running',
         providerStatus: 'running',
-        progress: 20,
+        progress: 60,
         now: new Date().toISOString(),
       })
     }
@@ -439,10 +439,13 @@ function toReviewStatusResponse(
 function stageMessage(stage: ReviewStage): string {
   switch (stage) {
     case 'material_analysis_running':
+      return '正在理解项目材料'
     case 'material_analysis_completed':
+      return '材料理解已完成，准备开始自动合规审查'
     case 'domain_review_running':
+      return '材料理解已完成，正在执行自动合规审查'
     case 'report_aggregating':
-      return '完整合规审查工作流正在执行，完成后将一次性生成材料分类与最终报告'
+      return '自动合规审查已完成，正在生成结果'
     case 'report_completed':
       return '合规审查已完成'
     case 'failed':

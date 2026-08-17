@@ -49,29 +49,28 @@ const currentStage = computed<ProjectStage>(
   () => reviewStatus.value?.stage ?? project.value?.stage ?? 'waiting_for_upload',
 )
 const activeStep = computed(() => {
-  if (uploadPhase.value === 'reviewing') return 1
-
   switch (currentStage.value) {
     case 'waiting_for_upload':
     case 'uploading_files':
       return 0
     case 'material_analysis_running':
+      return 1
     case 'material_analysis_completed':
     case 'domain_review_running':
-    case 'report_aggregating':
     case 'failed':
-      return 1
-    case 'report_completed':
       return 2
+    case 'report_aggregating':
+      return 3
+    case 'report_completed':
+      return 4
   }
 })
 const reviewProgress = computed(
   () => reviewStatus.value?.progress ?? project.value?.review?.progress ?? 0,
 )
-const reviewMessage = computed(() => {
-  if (uploadPhase.value === 'reviewing') return stageLabel('material_analysis_running')
-  return reviewStatus.value?.message ?? stageLabel(currentStage.value)
-})
+const reviewMessage = computed(
+  () => reviewStatus.value?.message ?? stageLabel(currentStage.value),
+)
 const reviewTone = computed<StatusTone>(() => {
   if (reviewStatus.value?.status === 'failed' || currentStage.value === 'failed') return 'danger'
   if (reviewStatus.value?.status === 'completed' || currentStage.value === 'report_completed') {
@@ -175,7 +174,12 @@ async function handleUpload(): Promise<void> {
     )
 
     uploadPhase.value = 'reviewing'
-    const review = await completeProjectUploads(projectId.value, controller.signal)
+
+    // /uploads/complete 会先在后端落审查阶段，再执行 Provider。
+    // POST 请求进行期间持续读取后端状态，步骤条只以后端 stage 为准。
+    const completeReviewRequest = completeProjectUploads(projectId.value, controller.signal)
+    schedulePoll(true)
+    const review = await completeReviewRequest
 
     ElMessage.success(
       review.status === 'completed'
@@ -194,6 +198,7 @@ async function handleUpload(): Promise<void> {
     }
   } catch (error) {
     if (isApiError(error) && error.code === 'REQUEST_CANCELLED') return
+    clearPoll()
     actionError.value = error instanceof Error ? error.message : '材料上传或同步合规审查失败'
   } finally {
     uploading.value = false
@@ -222,20 +227,27 @@ async function refreshReview(): Promise<void> {
   }
 }
 
-function schedulePoll(): void {
+function schedulePoll(waitForReviewStart = false): void {
   clearPoll()
-  if (reviewStatus.value?.status !== 'reviewing') return
+  if (!waitForReviewStart && reviewStatus.value?.status !== 'reviewing') return
 
+  const delayMs = waitForReviewStart ? 500 : 2_000
   pollTimer = globalThis.setTimeout(async () => {
     try {
       await refreshReview()
       if (reviewStatus.value?.status === 'reviewing') schedulePoll()
     } catch (error) {
       if (isApiError(error) && error.code === 'REQUEST_CANCELLED') return
+      if (waitForReviewStart && isApiError(error) && error.code === 'REVIEW_RUN_NOT_FOUND') {
+        schedulePoll(true)
+        return
+      }
       actionError.value = error instanceof Error ? error.message : '审查状态刷新失败'
-      schedulePoll()
+      if (waitForReviewStart || reviewStatus.value?.status === 'reviewing') {
+        schedulePoll(waitForReviewStart)
+      }
     }
-  }, 2_000)
+  }, delayMs)
 }
 
 function clearPoll(): void {
@@ -255,10 +267,10 @@ function stageLabel(stage: ProjectStage): string {
   const labels: Record<ProjectStage, string> = {
     waiting_for_upload: '等待上传材料',
     uploading_files: '材料上传中',
-    material_analysis_running: '完整合规审查工作流正在执行',
-    material_analysis_completed: '完整合规审查工作流正在执行',
-    domain_review_running: '完整合规审查工作流正在执行',
-    report_aggregating: '完整合规审查工作流正在执行',
+    material_analysis_running: '正在理解项目材料',
+    material_analysis_completed: '材料理解已完成，准备开始自动合规审查',
+    domain_review_running: '材料理解已完成，正在执行自动合规审查',
+    report_aggregating: '自动合规审查已完成，正在生成结果',
     report_completed: '合规审查报告已生成',
     failed: '合规审查失败',
   }
@@ -308,6 +320,7 @@ onBeforeUnmount(() => {
       <BaseCard title="自动审查进度" :description="reviewMessage">
         <el-steps :active="activeStep" finish-status="success" align-center>
           <el-step title="上传材料" />
+          <el-step title="材料理解" />
           <el-step title="自动合规审查" />
           <el-step title="生成结果" />
         </el-steps>

@@ -25,7 +25,7 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
     },
     {
       status: 202,
-      message: '材料上传已完成，完整合规审查工作流已启动',
+      message: '材料已保存并完成理解，自动合规审查已启动',
       requestId: data.requestId,
     },
   )
