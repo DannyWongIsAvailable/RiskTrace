@@ -3,16 +3,29 @@ import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { deleteProjectDocument, getProject, getProjectReport } from '@/api/modules'
+import {
+  deleteProjectDocument,
+  getProject,
+  getProjectMaterialAnalysis,
+  getProjectReport,
+} from '@/api/modules'
 import { isApiError } from '@/api/request'
+import MaterialAnalysisPanel from '@/components/projects/MaterialAnalysisPanel.vue'
 import { AppIcons } from '@/icons'
-import type { ProjectDetail, ProjectDocument, ReviewReport, RiskLevel } from '@/types/project'
+import type {
+  MaterialAnalysis,
+  ProjectDetail,
+  ProjectDocument,
+  ReviewReport,
+  RiskLevel,
+} from '@/types/project'
 import type { StatusTone } from '@/types/ui'
 
 const route = useRoute()
 const router = useRouter()
 const projectId = computed(() => String(route.params.projectId ?? ''))
 const project = ref<ProjectDetail>()
+const materialAnalysis = ref<MaterialAnalysis>()
 const report = ref<ReviewReport>()
 const loading = ref(true)
 const loadError = ref('')
@@ -39,11 +52,13 @@ async function loadReport(): Promise<void> {
   loading.value = true
   loadError.value = ''
   try {
-    const [projectResult, reportResult] = await Promise.all([
+    const [projectResult, materialAnalysisResult, reportResult] = await Promise.all([
       getProject(projectId.value, controller.signal),
+      getProjectMaterialAnalysis(projectId.value, controller.signal),
       getProjectReport(projectId.value, controller.signal),
     ])
     project.value = projectResult
+    materialAnalysis.value = materialAnalysisResult
     report.value = reportResult
   } catch (error) {
     if (isApiError(error) && error.code === 'REQUEST_CANCELLED') return
@@ -94,7 +109,7 @@ onBeforeUnmount(() => controller.abort())
   <div class="rt-page rt-page-stack">
     <PageHeader
       :title="project?.projectTitle ?? report?.projectTitle ?? '合规审查报告'"
-      description="只读合规审查报告，集中展示风险事项、关联材料与分析限制。"
+      description="只读合规审查报告，集中展示材料理解、风险事项、关联材料与分析限制。"
       :breadcrumbs="[
         { label: '采购项目', to: { name: 'projects' } },
         { label: '合规审查报告' },
@@ -147,6 +162,8 @@ onBeforeUnmount(() => controller.abort())
           </div>
         </div>
       </BaseCard>
+
+      <MaterialAnalysisPanel v-if="materialAnalysis" :analysis="materialAnalysis" />
 
       <div class="project-report__summary-grid">
         <BaseCard title="总体风险等级">

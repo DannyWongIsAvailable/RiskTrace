@@ -49,6 +49,8 @@ const currentStage = computed<ProjectStage>(
   () => reviewStatus.value?.stage ?? project.value?.stage ?? 'waiting_for_upload',
 )
 const activeStep = computed(() => {
+  if (uploadPhase.value === 'reviewing') return 1
+
   switch (currentStage.value) {
     case 'waiting_for_upload':
     case 'uploading_files':
@@ -66,9 +68,10 @@ const activeStep = computed(() => {
 const reviewProgress = computed(
   () => reviewStatus.value?.progress ?? project.value?.review?.progress ?? 0,
 )
-const reviewMessage = computed(
-  () => reviewStatus.value?.message ?? stageLabel(currentStage.value),
-)
+const reviewMessage = computed(() => {
+  if (uploadPhase.value === 'reviewing') return stageLabel('material_analysis_running')
+  return reviewStatus.value?.message ?? stageLabel(currentStage.value)
+})
 const reviewTone = computed<StatusTone>(() => {
   if (reviewStatus.value?.status === 'failed' || currentStage.value === 'failed') return 'danger'
   if (reviewStatus.value?.status === 'completed' || currentStage.value === 'report_completed') {
@@ -391,7 +394,7 @@ onBeforeUnmount(() => {
       <InlineNotice
         v-if="reportReady"
         title="合规审查报告已生成"
-        description="工作流已一次性返回材料分类与最终报告；材料理解结果保留在当前页面，可进入只读报告查看风险事项和关联文件。"
+        description="工作流已一次性返回材料分类与最终报告；可进入只读报告统一查看材料理解结果、风险事项和关联文件。"
         tone="success"
       >
         <template #actions>
