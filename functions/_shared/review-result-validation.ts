@@ -77,16 +77,13 @@ export function normalizeMaterialAnalysis(
     const material = requireObject(item, `materials[${index}]`)
     const documentId = readRequiredText(material.documentId, `materials[${index}].documentId`, 80)
     const document = documentById.get(documentId)
-    if (!document) {
-      throw invalidOutput('材料理解结果引用了不属于当前项目的文件')
-    }
     if (materialByDocumentId.has(documentId)) {
       throw invalidOutput('材料理解结果包含重复文件记录')
     }
 
     materialByDocumentId.set(documentId, {
       documentId,
-      fileName: document.original_name,
+      fileName: document?.original_name ?? readOptionalFileName(material.fileName),
       materialName: readRequiredText(
         material.materialName,
         `materials[${index}].materialName`,
@@ -223,13 +220,13 @@ function normalizeRelatedDocuments(
       80,
     )
     const document = documentById.get(documentId)
-    if (!document) {
-      throw invalidOutput('最终报告引用了不属于当前项目的文件')
-    }
 
     if (!seen.has(documentId)) {
       seen.add(documentId)
-      result.push({ documentId, fileName: document.original_name })
+      result.push({
+        documentId,
+        fileName: document?.original_name ?? readOptionalFileName(record.fileName),
+      })
     }
   })
 
@@ -265,6 +262,15 @@ function readEnum(value: unknown, values: readonly string[], fieldName: string):
   }
 
   return text
+}
+
+function readOptionalFileName(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '未知文件'
+  }
+
+  const text = value.trim()
+  return text ? text.slice(0, 255) : '未知文件'
 }
 
 function readRequiredText(value: unknown, fieldName: string, maxLength: number): string {
