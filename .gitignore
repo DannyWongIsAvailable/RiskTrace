@@ -45,3 +45,9 @@ Thumbs.db
 __screenshots__/
 /.env
 /migrations/
+
+# DeepSeek Harness
+deepseek-harness/.venv/
+deepseek-harness/sessions/
+deepseek-harness/workspace/
+deepseek-harness/.env
