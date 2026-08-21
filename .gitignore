@@ -46,8 +46,18 @@ __screenshots__/
 /.env
 /migrations/
 
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
 # DeepSeek Harness
 deepseek-harness/.venv/
-deepseek-harness/sessions/
-deepseek-harness/workspace/
 deepseek-harness/.env
+deepseek-harness/sessions/*
+!deepseek-harness/sessions/.gitkeep
+deepseek-harness/workspace/*
+!deepseek-harness/workspace/.gitkeep
+deepseek-harness/.dsh/
