@@ -2,13 +2,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.runs import router as runs_router
 from app.core.config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.ensure_directories()
-
     yield
 
 
@@ -17,6 +17,8 @@ app = FastAPI(
     version=settings.app_version,
     lifespan=lifespan,
 )
+
+app.include_router(runs_router)
 
 
 @app.get("/healthz")
