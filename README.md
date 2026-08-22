@@ -2,7 +2,7 @@
 
 RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需填写项目标题并一次性上传当前已有的全部材料，系统随后通过统一 `ReviewProvider` 启动一次完整审查执行，在同一次执行中连续完成材料理解、完整性检查、领域路由、领域审查和报告聚合。当前可在 Mock、讯飞星辰 Workflow 与 DeepSeek Harness 之间切换，前端 API 保持不变。
 
-> 仓库地址：https://github.com/DannyWongIsAvailable/RiskTrace.git 
+> 仓库地址：https://github.com/DannyWongIsAvailable/RiskTrace.git  
 > 线上地址：https://risktrace.pages.dev/
 
 完整产品范围和实现口径见：`docs/Demo应用设计方案.md`。
