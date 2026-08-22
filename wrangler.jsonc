@@ -9,7 +9,8 @@
   "vars": {
     "APP_NAME": "RiskTrace",
     "APP_ENV": "production",
-    "REVIEW_PROVIDER": "xingchen",
+    "REVIEW_PROVIDER": "deepseek-harness",
+    "DEEPSEEK_HARNESS_BASE_URL": "http://120.77.56.178:8000",
     "XFYUN_API_BASE_URL": "https://xingchen-api.xf-yun.com",
     "R2_BUCKET_NAME": "risktrace-files",
     "XFYUN_FLOW_ID_REVIEW": "7495033263766876160"

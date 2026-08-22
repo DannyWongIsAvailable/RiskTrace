@@ -6,7 +6,7 @@ import type {
   ReviewProvider,
 } from './review-provider'
 
-const REQUEST_TIMEOUT_MS = 30_000
+const REQUEST_TIMEOUT_MS = 300_000
 const CONTRACT_VERSION = 'risktrace.review.v1'
 
 /**
