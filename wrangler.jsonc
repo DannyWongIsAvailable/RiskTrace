@@ -10,7 +10,7 @@
     "APP_NAME": "RiskTrace",
     "APP_ENV": "production",
     "REVIEW_PROVIDER": "deepseek-harness",
-    "DEEPSEEK_HARNESS_BASE_URL": "https://ground-editorials-sake-deposits.trycloudflare.com",
+    "DEEPSEEK_HARNESS_BASE_URL": "https://title-louisville-survey-experts.trycloudflare.com",
     "XFYUN_API_BASE_URL": "https://xingchen-api.xf-yun.com",
     "R2_BUCKET_NAME": "risktrace-files",
     "XFYUN_FLOW_ID_REVIEW": "7495033263766876160"
