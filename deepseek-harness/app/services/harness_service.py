@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import time
+from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from deepseek_harness import DeepSeekHarness
@@ -161,3 +164,118 @@ def run_review(
         )
 
     return parse_output(result.final_response)
+
+
+def _diagnostic_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _harness_sdk_version() -> str:
+    try:
+        return version("deepseek-harness-sdk")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
+    """Run a minimal synchronous Harness call for end-to-end provider diagnostics."""
+    started_at = time.perf_counter()
+    logs: list[dict[str, Any]] = []
+
+    def log(
+        level: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        entry: dict[str, Any] = {
+            "timestamp": _diagnostic_timestamp(),
+            "level": level,
+            "layer": "harness",
+            "message": message,
+        }
+        if details is not None:
+            entry["details"] = details
+        logs.append(entry)
+
+    api_key = None
+    if settings.deepseek_api_key is not None:
+        api_key = settings.deepseek_api_key.get_secret_value()
+
+    log(
+        "info",
+        "准备启动 DeepSeek Harness SDK",
+        {
+            "provider": settings.harness_provider,
+            "model": settings.harness_model,
+            "sdkVersion": _harness_sdk_version(),
+            "deepseekApiKeyConfigured": bool(api_key),
+            "deepseekBaseUrlConfigured": bool(settings.deepseek_base_url),
+        },
+    )
+
+    try:
+        with DeepSeekHarness(
+            provider=settings.harness_provider,
+            model=settings.harness_model,
+            cwd=str(settings.harness_workspace),
+            session_root=str(settings.harness_session_root),
+            api_key=api_key,
+            base_url=settings.deepseek_base_url,
+        ) as harness:
+            log("success", "DeepSeek Harness runtime 已启动")
+            run_started_at = time.perf_counter()
+            result = harness.run(
+                "这是 RiskTrace Provider 连通性检查。请只回复 RISKTRACE_HARNESS_OK，不要添加其他内容。",
+                session_id=f"diagnostic-{check_id}",
+            )
+            run_duration_ms = round((time.perf_counter() - run_started_at) * 1000)
+
+        finish_reason = str(result.finish_reason)
+        final_response = (result.final_response or "").strip()
+        response_preview = final_response[:1000]
+        expected_response_matched = "RISKTRACE_HARNESS_OK" in final_response
+        ok = finish_reason.lower() != "error" and bool(final_response)
+
+        log(
+            "success" if ok else "error",
+            "DeepSeek Harness 模型调用已返回" if ok else "DeepSeek Harness 模型调用未成功返回",
+            {
+                "finishReason": finish_reason,
+                "runDurationMs": run_duration_ms,
+                "responseLength": len(final_response),
+                "responsePreview": response_preview,
+                "expectedResponseMatched": expected_response_matched,
+            },
+        )
+
+        return {
+            "ok": ok,
+            "provider": settings.harness_provider,
+            "model": settings.harness_model,
+            "sdkVersion": _harness_sdk_version(),
+            "finishReason": finish_reason,
+            "response": response_preview,
+            "expectedResponseMatched": expected_response_matched,
+            "durationMs": round((time.perf_counter() - started_at) * 1000),
+            "logs": logs,
+        }
+    except Exception as exc:
+        log(
+            "error",
+            "DeepSeek Harness 诊断调用抛出异常",
+            {
+                "errorType": type(exc).__name__,
+                "errorMessage": str(exc),
+            },
+        )
+        return {
+            "ok": False,
+            "provider": settings.harness_provider,
+            "model": settings.harness_model,
+            "sdkVersion": _harness_sdk_version(),
+            "finishReason": "error",
+            "response": "",
+            "expectedResponseMatched": False,
+            "durationMs": round((time.perf_counter() - started_at) * 1000),
+            "logs": logs,
+        }

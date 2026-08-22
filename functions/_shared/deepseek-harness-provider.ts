@@ -85,21 +85,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       })
 
       if (!response.ok) {
-        const errorBody = await response.text()
-
-        console.error('[deepseek-harness] non-2xx response', {
-          method,
-          path,
-          status: response.status,
-          statusText: response.statusText,
-          body: errorBody.slice(0, 2000),
-        })
-
-        throw new AppError(
-          'WORKFLOW_PROVIDER_UNAVAILABLE',
-          '合规审查服务暂时不可用',
-          502,
-        )
+        throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '合规审查服务暂时不可用', 502)
       }
 
       const responseText = await response.text()
@@ -137,30 +123,10 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       if (error instanceof AppError) {
         throw error
       }
-
-      console.error('[deepseek-harness] request failed', {
-        method,
-        path,
-        baseUrl: this.baseUrl,
-        error:
-          error instanceof Error
-            ? `${error.name}: ${error.message}`
-            : String(error),
-      })
-
       if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new AppError(
-          'WORKFLOW_PROVIDER_TIMEOUT',
-          '合规审查服务响应超时',
-          504,
-        )
+        throw new AppError('WORKFLOW_PROVIDER_TIMEOUT', '合规审查服务响应超时', 504)
       }
-
-      throw new AppError(
-        'WORKFLOW_PROVIDER_UNAVAILABLE',
-        '合规审查服务暂时不可用',
-        502,
-      )
+      throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '合规审查服务暂时不可用', 502)
     } finally {
       clearTimeout(timeout)
     }

@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.diagnostics import router as diagnostics_router
 from app.api.runs import router as runs_router
 from app.core.config import settings
 
@@ -19,6 +20,7 @@ app = FastAPI(
 )
 
 app.include_router(runs_router)
+app.include_router(diagnostics_router)
 
 
 @app.get("/healthz")

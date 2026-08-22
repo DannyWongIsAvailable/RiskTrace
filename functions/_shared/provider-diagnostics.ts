@@ -1,0 +1,389 @@
+export type ProviderDiagnosticLevel = 'info' | 'success' | 'warning' | 'error'
+export type ProviderDiagnosticCheckState = 'passed' | 'failed' | 'skipped'
+
+export interface ProviderDiagnosticLogEntry {
+  timestamp: string
+  level: ProviderDiagnosticLevel
+  layer: 'functions' | 'fastapi' | 'harness'
+  message: string
+  details?: Record<string, unknown>
+}
+
+export interface ProviderDiagnosticResult {
+  checkId: string
+  ok: boolean
+  startedAt: string
+  finishedAt: string
+  durationMs: number
+  provider: {
+    configuredProvider: string
+    baseUrl: string | null
+    apiKeyConfigured: boolean
+  }
+  checks: {
+    functions: ProviderDiagnosticCheckState
+    fastApi: ProviderDiagnosticCheckState
+    harness: ProviderDiagnosticCheckState
+  }
+  logs: ProviderDiagnosticLogEntry[]
+}
+
+const HEALTH_TIMEOUT_MS = 15_000
+const HARNESS_TIMEOUT_MS = 300_000
+const MAX_RESPONSE_PREVIEW_LENGTH = 8_000
+
+function now(): string {
+  return new Date().toISOString()
+}
+
+function addLog(
+  logs: ProviderDiagnosticLogEntry[],
+  level: ProviderDiagnosticLevel,
+  layer: ProviderDiagnosticLogEntry['layer'],
+  message: string,
+  details?: Record<string, unknown>,
+): void {
+  logs.push({
+    timestamp: now(),
+    level,
+    layer,
+    message,
+    ...(details ? { details } : {}),
+  })
+}
+
+function normalizeBaseUrl(value: string | undefined): string | null {
+  const trimmed = value?.trim().replace(/\/$/, '')
+  return trimmed || null
+}
+
+function toSafeUrl(value: string | null): string | null {
+  if (!value) {
+    return null
+  }
+
+  try {
+    const url = new URL(value)
+    url.username = ''
+    url.password = ''
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return value
+  }
+}
+
+function createTimeoutSignal(timeoutMs: number): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  return {
+    signal: controller.signal,
+    cleanup: () => clearTimeout(timeoutId),
+  }
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function readBoolean(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function readRemoteLogs(value: unknown): ProviderDiagnosticLogEntry[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.flatMap((item) => {
+    const record = readRecord(item)
+    if (!record) {
+      return []
+    }
+
+    const timestamp = readString(record.timestamp)
+    const level = readString(record.level)
+    const layer = readString(record.layer)
+    const message = readString(record.message)
+    const details = readRecord(record.details) ?? undefined
+
+    if (
+      !timestamp ||
+      !message ||
+      !['info', 'success', 'warning', 'error'].includes(level ?? '') ||
+      !['fastapi', 'harness'].includes(layer ?? '')
+    ) {
+      return []
+    }
+
+    return [
+      {
+        timestamp,
+        level: level as ProviderDiagnosticLevel,
+        layer: layer as 'fastapi' | 'harness',
+        message,
+        ...(details ? { details } : {}),
+      },
+    ]
+  })
+}
+
+function errorDetails(error: unknown): Record<string, unknown> {
+  return {
+    errorName: error instanceof Error ? error.name : 'UnknownError',
+    errorMessage: error instanceof Error ? error.message : String(error),
+  }
+}
+
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const timeout = createTimeoutSignal(timeoutMs)
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: timeout.signal,
+    })
+  } finally {
+    timeout.cleanup()
+  }
+}
+
+export async function runProviderDiagnostics(
+  env: Env,
+  requestId: string,
+): Promise<ProviderDiagnosticResult> {
+  const startedAtMs = Date.now()
+  const startedAt = now()
+  const checkId = `provider-check-${crypto.randomUUID()}`
+  const logs: ProviderDiagnosticLogEntry[] = []
+  const configuredProvider = env.REVIEW_PROVIDER?.trim() || 'mock'
+  const baseUrl = normalizeBaseUrl(env.DEEPSEEK_HARNESS_BASE_URL)
+  const safeBaseUrl = toSafeUrl(baseUrl)
+  const apiKey = env.DEEPSEEK_HARNESS_API_KEY?.trim() || null
+  let fastApiState: ProviderDiagnosticCheckState = 'skipped'
+  let harnessState: ProviderDiagnosticCheckState = 'skipped'
+
+  addLog(logs, 'info', 'functions', 'Provider 检查开始', {
+    checkId,
+    requestId,
+  })
+  addLog(logs, 'info', 'functions', '读取 Pages Functions Provider 配置', {
+    configuredProvider,
+    baseUrl: safeBaseUrl,
+    apiKeyConfigured: Boolean(apiKey),
+    healthTimeoutMs: HEALTH_TIMEOUT_MS,
+    harnessTimeoutMs: HARNESS_TIMEOUT_MS,
+  })
+
+  if (configuredProvider !== 'deepseek-harness') {
+    addLog(logs, 'warning', 'functions', '当前 REVIEW_PROVIDER 不是 deepseek-harness', {
+      configuredProvider,
+    })
+  }
+
+  if (!baseUrl) {
+    addLog(logs, 'error', 'functions', '缺少 DEEPSEEK_HARNESS_BASE_URL，无法继续检查')
+    const finishedAt = now()
+    return {
+      checkId,
+      ok: false,
+      startedAt,
+      finishedAt,
+      durationMs: Date.now() - startedAtMs,
+      provider: {
+        configuredProvider,
+        baseUrl: safeBaseUrl,
+        apiKeyConfigured: Boolean(apiKey),
+      },
+      checks: {
+        functions: 'passed',
+        fastApi: 'failed',
+        harness: 'skipped',
+      },
+      logs,
+    }
+  }
+
+  const healthUrl = `${baseUrl}/healthz`
+  addLog(logs, 'info', 'functions', '开始从 Pages Functions 请求 FastAPI /healthz', {
+    target: toSafeUrl(healthUrl),
+  })
+
+  try {
+    const healthStartedAt = Date.now()
+    const response = await fetchWithTimeout(
+      healthUrl,
+      {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      },
+      HEALTH_TIMEOUT_MS,
+    )
+    const body = await response.text()
+
+    if (!response.ok) {
+      fastApiState = 'failed'
+      addLog(logs, 'error', 'functions', 'FastAPI /healthz 返回非 2xx 状态', {
+        status: response.status,
+        statusText: response.statusText,
+        durationMs: Date.now() - healthStartedAt,
+        responseBody: body.slice(0, MAX_RESPONSE_PREVIEW_LENGTH),
+      })
+    } else {
+      fastApiState = 'passed'
+      addLog(logs, 'success', 'functions', 'Pages Functions 已成功连接 FastAPI', {
+        status: response.status,
+        durationMs: Date.now() - healthStartedAt,
+        responseBody: body.slice(0, MAX_RESPONSE_PREVIEW_LENGTH),
+      })
+    }
+  } catch (error) {
+    fastApiState = 'failed'
+    addLog(logs, 'error', 'functions', 'Pages Functions 请求 FastAPI /healthz 失败', {
+      target: toSafeUrl(healthUrl),
+      ...errorDetails(error),
+    })
+  }
+
+  if (fastApiState !== 'passed') {
+    addLog(logs, 'warning', 'functions', 'FastAPI 连通性失败，跳过 Harness 模型调用')
+    const finishedAt = now()
+    return {
+      checkId,
+      ok: false,
+      startedAt,
+      finishedAt,
+      durationMs: Date.now() - startedAtMs,
+      provider: {
+        configuredProvider,
+        baseUrl: safeBaseUrl,
+        apiKeyConfigured: Boolean(apiKey),
+      },
+      checks: {
+        functions: 'passed',
+        fastApi: fastApiState,
+        harness: 'skipped',
+      },
+      logs,
+    }
+  }
+
+  const diagnosticUrl = `${baseUrl}/diagnostics/provider-check`
+  addLog(logs, 'info', 'functions', '开始请求 FastAPI Harness 诊断接口', {
+    target: toSafeUrl(diagnosticUrl),
+  })
+
+  try {
+    const harnessStartedAt = Date.now()
+    const response = await fetchWithTimeout(
+      diagnosticUrl,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          checkId,
+          requestId,
+          source: 'risktrace-pages-functions',
+        }),
+      },
+      HARNESS_TIMEOUT_MS,
+    )
+    const responseText = await response.text()
+    let payload: unknown
+
+    try {
+      payload = JSON.parse(responseText) as unknown
+    } catch {
+      payload = null
+    }
+
+    const payloadRecord = readRecord(payload)
+    const remoteLogs = readRemoteLogs(payloadRecord?.logs)
+    logs.push(...remoteLogs)
+
+    if (!response.ok) {
+      harnessState = 'failed'
+      addLog(logs, 'error', 'functions', 'FastAPI Harness 诊断接口返回非 2xx 状态', {
+        status: response.status,
+        statusText: response.statusText,
+        durationMs: Date.now() - harnessStartedAt,
+        responseBody: responseText.slice(0, MAX_RESPONSE_PREVIEW_LENGTH),
+      })
+    } else if (!payloadRecord) {
+      harnessState = 'failed'
+      addLog(logs, 'error', 'functions', 'FastAPI Harness 诊断接口返回了无效 JSON', {
+        durationMs: Date.now() - harnessStartedAt,
+        responseBody: responseText.slice(0, MAX_RESPONSE_PREVIEW_LENGTH),
+      })
+    } else {
+      harnessState = readBoolean(payloadRecord.ok) === true ? 'passed' : 'failed'
+      addLog(
+        logs,
+        harnessState === 'passed' ? 'success' : 'error',
+        'functions',
+        harnessState === 'passed'
+          ? 'FastAPI Harness 诊断完成，模型调用成功'
+          : 'FastAPI Harness 诊断完成，但模型调用失败',
+        {
+          status: response.status,
+          durationMs: Date.now() - harnessStartedAt,
+          harness: readRecord(payloadRecord.harness),
+        },
+      )
+    }
+  } catch (error) {
+    harnessState = 'failed'
+    addLog(logs, 'error', 'functions', 'Pages Functions 请求 Harness 诊断接口失败', {
+      target: toSafeUrl(diagnosticUrl),
+      ...errorDetails(error),
+    })
+  }
+
+  const finishedAt = now()
+  const ok = fastApiState === 'passed' && harnessState === 'passed'
+
+  addLog(
+    logs,
+    ok ? 'success' : 'error',
+    'functions',
+    ok ? 'Provider 全链路检查通过' : 'Provider 全链路检查未通过',
+    {
+      fastApi: fastApiState,
+      harness: harnessState,
+      durationMs: Date.now() - startedAtMs,
+    },
+  )
+
+  return {
+    checkId,
+    ok,
+    startedAt,
+    finishedAt,
+    durationMs: Date.now() - startedAtMs,
+    provider: {
+      configuredProvider,
+      baseUrl: safeBaseUrl,
+      apiKeyConfigured: Boolean(apiKey),
+    },
+    checks: {
+      functions: 'passed',
+      fastApi: fastApiState,
+      harness: harnessState,
+    },
+    logs,
+  }
+}

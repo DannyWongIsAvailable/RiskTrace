@@ -6,6 +6,7 @@ import DashboardView from '@/views/DashboardView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
 import ProjectCreateView from '@/views/ProjectCreateView.vue'
 import ProjectListView from '@/views/ProjectListView.vue'
+import ProviderCheckView from '@/views/ProviderCheckView.vue'
 import ProjectReportView from '@/views/ProjectReportView.vue'
 import ProjectUploadView from '@/views/ProjectUploadView.vue'
 
@@ -76,6 +77,22 @@ const router = createRouter({
           meta: {
             title: '合规审查报告',
             description: '查看采购项目合规审查报告。',
+          },
+        },
+        {
+          path: 'provider-check',
+          name: 'provider-check',
+          component: ProviderCheckView,
+          meta: {
+            title: 'Provider 检查',
+            description: '检查 Pages Functions、FastAPI 与 DeepSeek Harness 全链路。',
+            navigation: {
+              group: 'support',
+              order: 10,
+              label: 'Provider 检查',
+              icon: AppIcons.navigation.rules,
+              description: 'Functions / FastAPI / Harness 联调',
+            },
           },
         },
       ],
