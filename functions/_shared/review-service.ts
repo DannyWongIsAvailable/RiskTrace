@@ -13,7 +13,6 @@ import { createId } from './ids'
 import { requireProject } from './project-repository'
 import {
   attachProviderExecuteId,
-  claimReviewRunStart,
   createOrGetReviewRun,
   markMaterialAnalysisSaved,
   prepareReviewRetry,
@@ -53,15 +52,6 @@ export async function startProjectReview(
   if (run.status === 'failed') {
     throw new AppError('REVIEW_RETRY_REQUIRED', '合规审查已失败，请使用重试接口', 409)
   }
-  if (run.provider_status === 'starting' || run.provider_execute_id) {
-    throw new AppError('REVIEW_ALREADY_RUNNING', '同步合规审查请求正在执行，请等待当前请求返回', 409)
-  }
-
-  const claimed = await claimReviewRunStart(env.risktrace_db, run.id, provider.name, now)
-  if (!claimed) {
-    throw new AppError('REVIEW_ALREADY_RUNNING', '同步合规审查请求正在执行，请等待当前请求返回', 409)
-  }
-
   try {
     return await createProviderRun(
       env,
@@ -103,11 +93,6 @@ export async function retryProjectReview(
     projectId: input.projectId,
     now,
   })
-  const claimed = await claimReviewRunStart(env.risktrace_db, run.id, provider.name, now)
-  if (!claimed) {
-    throw new AppError('REVIEW_ALREADY_RUNNING', '合规审查正在运行', 409)
-  }
-
   try {
     return await createProviderRun(
       env,
@@ -173,8 +158,10 @@ async function createProviderRun(
 ): Promise<ReviewRunRow> {
   const files = await createReviewProviderFileList(env, documents)
 
-  // Current phase is strictly synchronous: createRun does not return until the Provider has
-  // reached a terminal state. executeId is kept only as an audit/trace identifier.
+  // Strictly synchronous: do not persist a Provider starting/running claim before this call.
+  // The HTTP request waits here until the Provider reaches a terminal state. This removes the
+  // asynchronous-era running lock that could turn a long synchronous request re-entry into a 409.
+  // executeId is recorded only after the terminal response as an audit/trace identifier.
   const providerRun = await provider.createRun({
     projectId: project.id,
     reviewRunId,
@@ -184,6 +171,7 @@ async function createProviderRun(
 
   await attachProviderExecuteId(env.risktrace_db, {
     reviewRunId,
+    providerName: provider.name,
     executeId: providerRun.executeId,
     now: new Date().toISOString(),
   })

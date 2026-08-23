@@ -12,7 +12,7 @@ export async function createOrGetReviewRun(
         `INSERT OR IGNORE INTO review_runs (
           id, project_id, status, stage, provider_status, progress,
           attempt_count, started_at, updated_at
-        ) VALUES (?, ?, 'reviewing', 'material_analysis_completed', 'pending', 40, 0, ?, ?)`,
+        ) VALUES (?, ?, 'reviewing', 'material_analysis_completed', 'pending', 40, 1, ?, ?)`,
       )
       .bind(input.id, input.projectId, input.now, input.now),
     db
@@ -65,39 +65,22 @@ export async function requireReviewRunById(
   return run
 }
 
-export async function claimReviewRunStart(
-  db: D1Database,
-  reviewRunId: string,
-  providerName: ReviewProviderName,
-  now: string,
-): Promise<boolean> {
-  const result = await db
-    .prepare(
-      `UPDATE review_runs
-       SET provider_name = ?, provider_status = 'starting', status = 'reviewing',
-           stage = 'domain_review_running', progress = 60,
-           attempt_count = attempt_count + 1,
-           error_code = NULL, error_message = NULL,
-           finished_at = NULL, updated_at = ?
-       WHERE id = ? AND provider_execute_id IS NULL AND provider_status = 'pending'`,
-    )
-    .bind(providerName, now, reviewRunId)
-    .run()
-
-  return (result.meta.changes ?? 0) === 1
-}
-
 export async function attachProviderExecuteId(
   db: D1Database,
-  input: { reviewRunId: string; executeId: string; now: string },
+  input: {
+    reviewRunId: string
+    providerName: ReviewProviderName
+    executeId: string
+    now: string
+  },
 ): Promise<void> {
   const result = await db
     .prepare(
       `UPDATE review_runs
-       SET provider_execute_id = ?, updated_at = ?
-       WHERE id = ? AND provider_status = 'starting'`,
+       SET provider_name = ?, provider_execute_id = ?, updated_at = ?
+       WHERE id = ? AND status = 'reviewing'`,
     )
-    .bind(input.executeId, input.now, input.reviewRunId)
+    .bind(input.providerName, input.executeId, input.now, input.reviewRunId)
     .run()
 
   if ((result.meta.changes ?? 0) !== 1) {
@@ -182,8 +165,9 @@ export async function prepareReviewRetry(
         // provider_name is introduced by migrations/0002_review_provider.sql.
         // noinspection SqlResolve
         `UPDATE review_runs
-         SET status = 'reviewing', stage = 'domain_review_running',
-             provider_name = NULL, provider_execute_id = NULL, provider_status = 'pending', progress = 60,
+         SET status = 'reviewing', stage = 'material_analysis_completed',
+             provider_name = NULL, provider_execute_id = NULL, provider_status = 'pending', progress = 40,
+             attempt_count = attempt_count + 1,
              error_code = NULL, error_message = NULL, finished_at = NULL, updated_at = ?
          WHERE id = ? AND status = 'failed'`,
       )
@@ -191,7 +175,7 @@ export async function prepareReviewRetry(
     db
       .prepare(
         `UPDATE projects
-         SET status = 'reviewing', stage = 'domain_review_running', updated_at = ?
+         SET status = 'reviewing', stage = 'material_analysis_completed', updated_at = ?
          WHERE id = ?`,
       )
       .bind(input.now, input.projectId),
