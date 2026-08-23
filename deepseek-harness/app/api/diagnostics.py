@@ -4,13 +4,14 @@ import secrets
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
 from app.core.config import settings
 from app.services.harness_service import run_harness_diagnostic
 
 router = APIRouter(prefix="/diagnostics", tags=["diagnostics"])
+ASYNC_RUN_CONTRACT = "risktrace.harness.async.v1"
 
 
 class ProviderCheckRequest(BaseModel):
@@ -44,6 +45,41 @@ def _verify_authorization(authorization: str | None) -> str:
         )
 
     return "verified"
+
+
+@router.get("/async-contract")
+def async_contract(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """Cheap contract probe used by Pages Provider Check; never launches a model run."""
+    auth_state = _verify_authorization(authorization)
+    run_manager_ready = getattr(request.app.state, "run_manager", None) is not None
+    now = _timestamp()
+    diagnostic_run_id = "harnessrun_contract_probe"
+
+    return {
+        "ok": run_manager_ready,
+        "contract": ASYNC_RUN_CONTRACT,
+        "service": {
+            "name": "risktrace-deepseek-harness",
+            "version": settings.app_version,
+            "auth": auth_state,
+            "runManagerReady": run_manager_ready,
+        },
+        "sampleRun": {
+            "contract": ASYNC_RUN_CONTRACT,
+            "runId": diagnostic_run_id,
+            "status": "queued",
+            "createdAt": now,
+            "updatedAt": now,
+            "pollUrl": f"/runs/{diagnostic_run_id}",
+        },
+        "endpoints": {
+            "create": {"method": "POST", "path": "/runs", "successStatus": 202},
+            "get": {"method": "GET", "path": "/runs/{runId}", "successStatus": 200},
+        },
+    }
 
 
 @router.post("/provider-check")

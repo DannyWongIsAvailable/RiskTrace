@@ -32,6 +32,7 @@ export interface ProviderDiagnosticResult {
   checks: {
     functions: ProviderDiagnosticCheckState
     fastApi: ProviderDiagnosticCheckState
+    asyncApi: ProviderDiagnosticCheckState
     harness: ProviderDiagnosticCheckState
   }
   logs: ProviderDiagnosticLogEntry[]

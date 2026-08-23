@@ -1,3 +1,5 @@
+import { normalizeDeepSeekHarnessRunSnapshot } from './deepseek-harness-provider'
+
 export type ProviderDiagnosticLevel = 'info' | 'success' | 'warning' | 'error'
 export type ProviderDiagnosticCheckState = 'passed' | 'failed' | 'skipped'
 
@@ -23,14 +25,17 @@ export interface ProviderDiagnosticResult {
   checks: {
     functions: ProviderDiagnosticCheckState
     fastApi: ProviderDiagnosticCheckState
+    asyncApi: ProviderDiagnosticCheckState
     harness: ProviderDiagnosticCheckState
   }
   logs: ProviderDiagnosticLogEntry[]
 }
 
 const HEALTH_TIMEOUT_MS = 15_000
+const ASYNC_CONTRACT_TIMEOUT_MS = 15_000
 const HARNESS_TIMEOUT_MS = 300_000
 const MAX_RESPONSE_PREVIEW_LENGTH = 8_000
+const EXPECTED_ASYNC_CONTRACT = 'risktrace.harness.async.v1'
 
 function now(): string {
   return new Date().toISOString()
@@ -163,6 +168,40 @@ async function fetchWithTimeout(
   }
 }
 
+function emptyResult(
+  checkId: string,
+  startedAt: string,
+  startedAtMs: number,
+  configuredProvider: string,
+  safeBaseUrl: string | null,
+  apiKey: string | null,
+  fastApi: ProviderDiagnosticCheckState,
+  asyncApi: ProviderDiagnosticCheckState,
+  harness: ProviderDiagnosticCheckState,
+  logs: ProviderDiagnosticLogEntry[],
+): ProviderDiagnosticResult {
+  const finishedAt = now()
+  return {
+    checkId,
+    ok: false,
+    startedAt,
+    finishedAt,
+    durationMs: Date.now() - startedAtMs,
+    provider: {
+      configuredProvider,
+      baseUrl: safeBaseUrl,
+      apiKeyConfigured: Boolean(apiKey),
+    },
+    checks: {
+      functions: 'passed',
+      fastApi,
+      asyncApi,
+      harness,
+    },
+    logs,
+  }
+}
+
 export async function runProviderDiagnostics(
   env: Env,
   requestId: string,
@@ -177,6 +216,7 @@ export async function runProviderDiagnostics(
   const safeBaseUrl = toSafeUrl(baseUrl)
   const apiKey = env.DEEPSEEK_HARNESS_API_KEY?.trim() || null
   let fastApiState: ProviderDiagnosticCheckState = 'skipped'
+  let asyncApiState: ProviderDiagnosticCheckState = 'skipped'
   let harnessState: ProviderDiagnosticCheckState = 'skipped'
 
   addLog(logs, 'info', 'functions', 'Provider 检查开始', {
@@ -188,6 +228,7 @@ export async function runProviderDiagnostics(
     baseUrl: safeBaseUrl,
     apiKeyConfigured: Boolean(apiKey),
     healthTimeoutMs: HEALTH_TIMEOUT_MS,
+    asyncContractTimeoutMs: ASYNC_CONTRACT_TIMEOUT_MS,
     harnessTimeoutMs: HARNESS_TIMEOUT_MS,
   })
 
@@ -200,25 +241,18 @@ export async function runProviderDiagnostics(
 
   if (!baseUrl) {
     addLog(logs, 'error', 'functions', '缺少 DEEPSEEK_HARNESS_BASE_URL，无法继续检查')
-    const finishedAt = now()
-    return {
+    return emptyResult(
       checkId,
-      ok: false,
       startedAt,
-      finishedAt,
-      durationMs: Date.now() - startedAtMs,
-      provider: {
-        configuredProvider,
-        baseUrl: safeBaseUrl,
-        apiKeyConfigured: Boolean(apiKey),
-      },
-      checks: {
-        functions: 'passed',
-        fastApi: 'failed',
-        harness: 'skipped',
-      },
+      startedAtMs,
+      configuredProvider,
+      safeBaseUrl,
+      apiKey,
+      'failed',
+      'skipped',
+      'skipped',
       logs,
-    }
+    )
   }
 
   const healthUrl = `${baseUrl}/healthz`
@@ -263,26 +297,104 @@ export async function runProviderDiagnostics(
   }
 
   if (fastApiState !== 'passed') {
-    addLog(logs, 'warning', 'functions', 'FastAPI 连通性失败，跳过 Harness 模型调用')
-    const finishedAt = now()
-    return {
+    addLog(logs, 'warning', 'functions', 'FastAPI 连通性失败，跳过异步 Run API 与 Harness 模型调用')
+    return emptyResult(
       checkId,
-      ok: false,
       startedAt,
-      finishedAt,
-      durationMs: Date.now() - startedAtMs,
-      provider: {
-        configuredProvider,
-        baseUrl: safeBaseUrl,
-        apiKeyConfigured: Boolean(apiKey),
-      },
-      checks: {
-        functions: 'passed',
-        fastApi: fastApiState,
-        harness: 'skipped',
-      },
+      startedAtMs,
+      configuredProvider,
+      safeBaseUrl,
+      apiKey,
+      fastApiState,
+      'skipped',
+      'skipped',
       logs,
+    )
+  }
+
+  const asyncContractUrl = `${baseUrl}/diagnostics/async-contract`
+  addLog(logs, 'info', 'functions', '开始检查 FastAPI 异步 Run API 契约', {
+    target: toSafeUrl(asyncContractUrl),
+    expectedContract: EXPECTED_ASYNC_CONTRACT,
+  })
+
+  try {
+    const asyncStartedAt = Date.now()
+    const response = await fetchWithTimeout(
+      asyncContractUrl,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+      },
+      ASYNC_CONTRACT_TIMEOUT_MS,
+    )
+    const responseText = await response.text()
+    let payload: unknown
+    try {
+      payload = JSON.parse(responseText) as unknown
+    } catch {
+      payload = null
     }
+
+    const record = readRecord(payload)
+    const service = readRecord(record?.service)
+    const sampleRun = readRecord(record?.sampleRun)
+    const remoteOk = readBoolean(record?.ok) === true
+    const contract = readString(record?.contract)
+    const runManagerReady = readBoolean(service?.runManagerReady) === true
+    let sampleSnapshotValid = false
+    let sampleSnapshotState: string | null = null
+    let sampleSnapshotError: string | null = null
+
+    if (sampleRun) {
+      try {
+        const snapshot = normalizeDeepSeekHarnessRunSnapshot(sampleRun)
+        sampleSnapshotValid = snapshot.executeId === 'harnessrun_contract_probe'
+        sampleSnapshotState = snapshot.state
+      } catch (error) {
+        sampleSnapshotError = error instanceof Error ? error.message : String(error)
+      }
+    }
+
+    const passed =
+      response.ok &&
+      remoteOk &&
+      contract === EXPECTED_ASYNC_CONTRACT &&
+      runManagerReady &&
+      sampleSnapshotValid &&
+      sampleSnapshotState === 'queued'
+
+    asyncApiState = passed ? 'passed' : 'failed'
+    addLog(
+      logs,
+      passed ? 'success' : 'error',
+      'functions',
+      passed ? 'FastAPI 异步 Run API 契约检查通过' : 'FastAPI 异步 Run API 契约检查失败',
+      {
+        status: response.status,
+        durationMs: Date.now() - asyncStartedAt,
+        validation: {
+          remoteOk,
+          contract,
+          expectedContract: EXPECTED_ASYNC_CONTRACT,
+          runManagerReady,
+          sampleSnapshotValid,
+          sampleSnapshotState,
+          sampleSnapshotError,
+          serviceVersion: readString(service?.version),
+        },
+        responseBody: passed ? undefined : responseText.slice(0, MAX_RESPONSE_PREVIEW_LENGTH),
+      },
+    )
+  } catch (error) {
+    asyncApiState = 'failed'
+    addLog(logs, 'error', 'functions', 'Pages Functions 请求 FastAPI 异步 Run API 契约失败', {
+      target: toSafeUrl(asyncContractUrl),
+      ...errorDetails(error),
+    })
   }
 
   const diagnosticUrl = `${baseUrl}/diagnostics/provider-check`
@@ -341,8 +453,7 @@ export async function runProviderDiagnostics(
       const remoteOk = readBoolean(payloadRecord.ok) === true
       const harnessOk = readBoolean(harnessRecord?.ok) === true
       const finishReason = readString(harnessRecord?.finishReason)?.toLowerCase() ?? null
-      const expectedResponseMatched =
-        readBoolean(harnessRecord?.expectedResponseMatched) === true
+      const expectedResponseMatched = readBoolean(harnessRecord?.expectedResponseMatched) === true
       const responseMatchedExactly =
         readString(harnessRecord?.response) === 'RISKTRACE_HARNESS_OK'
 
@@ -387,6 +498,7 @@ export async function runProviderDiagnostics(
   const ok =
     providerConfiguredForHarness &&
     fastApiState === 'passed' &&
+    asyncApiState === 'passed' &&
     harnessState === 'passed'
 
   addLog(
@@ -397,6 +509,7 @@ export async function runProviderDiagnostics(
     {
       providerConfiguration: providerConfiguredForHarness ? 'passed' : 'failed',
       fastApi: fastApiState,
+      asyncApi: asyncApiState,
       harness: harnessState,
       durationMs: Date.now() - startedAtMs,
     },
@@ -416,6 +529,7 @@ export async function runProviderDiagnostics(
     checks: {
       functions: 'passed',
       fastApi: fastApiState,
+      asyncApi: asyncApiState,
       harness: harnessState,
     },
     logs,

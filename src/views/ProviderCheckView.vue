@@ -46,6 +46,12 @@ const checkItems = computed(() => {
       state: checks?.fastApi ?? 'skipped',
     },
     {
+      key: 'asyncApi',
+      label: '异步 Run API',
+      description: 'FastAPI /runs 提交/查询契约',
+      state: checks?.asyncApi ?? 'skipped',
+    },
+    {
       key: 'harness',
       label: 'DeepSeek Harness',
       description: 'FastAPI → Harness SDK → DeepSeek 模型',
@@ -263,7 +269,7 @@ onBeforeUnmount(() => controller?.abort())
 <style scoped>
 .provider-check__status-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--rt-space-3);
 }
 
