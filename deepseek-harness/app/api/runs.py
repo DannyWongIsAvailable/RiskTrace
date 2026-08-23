@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 
-from app.services.harness_service import run_review
+from app.services.harness_service import HarnessExecutionError, run_review_detailed
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -36,7 +36,7 @@ def create_run(request: CreateRunRequest):
     run_id = request.idempotencyKey
 
     try:
-        output = run_review(
+        execution = run_review_detailed(
             payload=request.model_dump(),
             run_id=run_id,
         )
@@ -44,7 +44,30 @@ def create_run(request: CreateRunRequest):
         return {
             "runId": run_id,
             "status": "completed",
-            "output": output,
+            "output": execution["output"],
+            # Raw root-session assistant text returned by the official SDK.
+            # Keep this separate from the normalized RiskTrace output.
+            "finalResponse": execution["finalResponse"],
+            "harness": execution["harness"],
+        }
+
+    except HarnessExecutionError as exc:
+        logger.exception(
+            "Harness review failed: run_id=%s finish_reason=%s harness_error=%s",
+            run_id,
+            exc.finish_reason,
+            exc.harness_error,
+        )
+
+        return {
+            "runId": run_id,
+            "status": "failed",
+            # Keep message at the top level because the existing Pages adapter
+            # already forwards it into RiskTrace's WORKFLOW_EXECUTION_FAILED text.
+            "message": str(exc),
+            "error": exc.to_api_error(),
+            "finalResponse": exc.final_response,
+            "harness": exc.to_harness_diagnostics(),
         }
 
     except Exception as exc:
@@ -56,5 +79,17 @@ def create_run(request: CreateRunRequest):
         return {
             "runId": run_id,
             "status": "failed",
-            "message": str(exc),
+            "message": f"Unhandled review exception [{type(exc).__name__}]: {exc}",
+            "error": {
+                "code": "REVIEW_UNHANDLED_EXCEPTION",
+                "message": str(exc),
+                "exceptionType": type(exc).__name__,
+            },
+            "finalResponse": "",
+            "harness": {
+                "finishReason": "error",
+                "eventCount": 0,
+                "lastTurnEnd": None,
+                "eventSummary": [],
+            },
         }

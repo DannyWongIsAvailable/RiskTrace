@@ -26,6 +26,50 @@ RISK_LEVELS = {"low", "medium", "high", "critical"}
 COMPLETENESS_RESULTS = {"complete", "incomplete", "uncertain"}
 
 
+class HarnessExecutionError(RuntimeError):
+  """Structured Harness failure that can be returned safely by the HTTP API."""
+
+  def __init__(
+    self,
+    message: str,
+    *,
+    finish_reason: str | None = None,
+    final_response: str = "",
+    harness_error: dict[str, Any] | None = None,
+    event_count: int = 0,
+    last_turn_end: dict[str, Any] | None = None,
+    event_summary: list[dict[str, Any]] | None = None,
+    exception_type: str | None = None,
+  ) -> None:
+    super().__init__(message)
+    self.finish_reason = finish_reason
+    self.final_response = final_response
+    self.harness_error = harness_error
+    self.event_count = event_count
+    self.last_turn_end = last_turn_end
+    self.event_summary = event_summary or []
+    self.exception_type = exception_type
+
+  def to_api_error(self) -> dict[str, Any]:
+    error: dict[str, Any] = {
+      "code": "HARNESS_EXECUTION_FAILED",
+      "message": str(self),
+    }
+    if self.exception_type:
+      error["exceptionType"] = self.exception_type
+    if self.harness_error:
+      error["harnessError"] = self.harness_error
+    return error
+
+  def to_harness_diagnostics(self) -> dict[str, Any]:
+    return {
+      "finishReason": self.finish_reason,
+      "eventCount": self.event_count,
+      "lastTurnEnd": self.last_turn_end,
+      "eventSummary": self.event_summary,
+    }
+
+
 def _safe_text(
   value: Any,
   default: str,
@@ -719,10 +763,184 @@ def _looks_like_document_parser_unavailable(exc: Exception) -> bool:
   return any(keyword in message for keyword in keywords)
 
 
-def run_review(
+def _normalize_finish_reason(value: Any) -> str | None:
+  if not isinstance(value, str):
+    return None
+  normalized = value.strip().lower()
+  return normalized or None
+
+
+def _safe_scalar(value: Any) -> str | int | float | bool | None:
+  if isinstance(value, (str, int, float, bool)) or value is None:
+    return value
+  return None
+
+
+def _sanitize_llm_failure(value: Any) -> dict[str, Any] | None:
+  """
+  Keep the provider-neutral fields defined by DeepSeek Harness LlmFailure.
+
+  Do not return arbitrary nested provider payloads, request headers, prompts,
+  signed file URLs, or tool arguments from the raw event log.
+  """
+  if not isinstance(value, dict):
+    return None
+
+  result: dict[str, Any] = {}
+  for key in (
+    "message",
+    "code",
+    "status",
+    "providerRetryAfterMs",
+    "requestId",
+  ):
+    scalar = _safe_scalar(value.get(key))
+    if scalar is not None:
+      result[key] = scalar
+
+  return result or None
+
+
+def _sanitize_turn_reason(value: Any) -> dict[str, Any] | None:
+  if not isinstance(value, dict):
+    return None
+
+  reason: dict[str, Any] = {}
+  kind = _safe_scalar(value.get("kind"))
+  if kind is not None:
+    reason["kind"] = kind
+
+  error = _sanitize_llm_failure(value.get("error"))
+  if error:
+    reason["error"] = error
+
+  # aborted turn reasons are small typed objects. Preserve only their kind.
+  abort_reason = value.get("reason")
+  if isinstance(abort_reason, dict):
+    abort_kind = _safe_scalar(abort_reason.get("kind"))
+    if abort_kind is not None:
+      reason["reason"] = {"kind": abort_kind}
+
+  return reason or None
+
+
+def _extract_last_turn_end(events: list[dict[str, Any]]) -> dict[str, Any] | None:
+  for event in reversed(events):
+    if not isinstance(event, dict) or event.get("type") != "turn/end":
+      continue
+
+    data = event.get("data")
+    if not isinstance(data, dict):
+      return {"reason": None}
+
+    result: dict[str, Any] = {
+      "reason": _sanitize_turn_reason(data.get("reason")),
+    }
+    turn = _safe_scalar(data.get("turn"))
+    if turn is not None:
+      result["turn"] = turn
+    return result
+
+  return None
+
+
+def _summarize_event(event: Any) -> dict[str, Any] | None:
+  if not isinstance(event, dict):
+    return None
+
+  event_type = event.get("type")
+  if not isinstance(event_type, str) or not event_type:
+    return None
+
+  summary: dict[str, Any] = {"type": event_type}
+  data = event.get("data")
+  if not isinstance(data, dict):
+    return summary
+
+  for key in ("turn", "step", "callId", "name", "kind"):
+    scalar = _safe_scalar(data.get(key))
+    if scalar is not None:
+      summary[key] = scalar
+
+  if event_type == "turn/end":
+    summary["reason"] = _sanitize_turn_reason(data.get("reason"))
+
+  # tool/result and some runtime/plugin events may carry a compact error identity.
+  error = data.get("error")
+  if isinstance(error, dict):
+    compact_error: dict[str, Any] = {}
+    for key in ("name", "code", "message", "status"):
+      scalar = _safe_scalar(error.get(key))
+      if scalar is not None:
+        compact_error[key] = scalar
+    if compact_error:
+      summary["error"] = compact_error
+
+  # command/done stores a small success/error kind; omit its free-form text.
+  if event_type == "command/done":
+    command_kind = _safe_scalar(data.get("kind"))
+    if command_kind is not None:
+      summary["kind"] = command_kind
+
+  return summary
+
+
+def _summarize_events(
+  events: list[dict[str, Any]],
+  *,
+  limit: int = 30,
+) -> list[dict[str, Any]]:
+  summaries: list[dict[str, Any]] = []
+  for event in events[-limit:]:
+    summary = _summarize_event(event)
+    if summary is not None:
+      summaries.append(summary)
+  return summaries
+
+
+def _result_diagnostics(result: Any) -> dict[str, Any]:
+  events = result.events if isinstance(result.events, list) else []
+  return {
+    "finishReason": _normalize_finish_reason(result.finish_reason),
+    "eventCount": len(events),
+    "lastTurnEnd": _extract_last_turn_end(events),
+    "eventSummary": _summarize_events(events),
+  }
+
+
+def _last_harness_error(diagnostics: dict[str, Any]) -> dict[str, Any] | None:
+  last_turn_end = diagnostics.get("lastTurnEnd")
+  if not isinstance(last_turn_end, dict):
+    return None
+  reason = last_turn_end.get("reason")
+  if not isinstance(reason, dict):
+    return None
+  return _sanitize_llm_failure(reason.get("error"))
+
+
+def _format_harness_error_message(
+  harness_error: dict[str, Any] | None,
+) -> str:
+  if not harness_error:
+    return "DeepSeek Harness execution failed"
+
+  code = harness_error.get("code")
+  message = harness_error.get("message")
+
+  if isinstance(code, str) and code and isinstance(message, str) and message:
+    return f"DeepSeek Harness execution failed [{code}]: {message}"
+  if isinstance(message, str) and message:
+    return f"DeepSeek Harness execution failed: {message}"
+  if isinstance(code, str) and code:
+    return f"DeepSeek Harness execution failed [{code}]"
+  return "DeepSeek Harness execution failed"
+
+
+def run_review_detailed(
   payload: dict[str, Any],
   run_id: str,
 ) -> dict[str, Any]:
+  """Run a review and keep the official SDK result metadata for API diagnostics."""
 
   prompt = build_prompt(payload)
 
@@ -745,32 +963,65 @@ def run_review(
         session_id=run_id,
       )
   except Exception as exc:
-    # 只有明确与文档解析/MinerU 工具缺失相关的异常才降级。
-    # DeepSeek 鉴权、网络等真正 Provider 故障仍继续抛出，避免掩盖基础设施问题。
+    # Preserve the existing product behavior for explicitly recognized document
+    # parser/tool availability failures: return a valid degraded RiskTrace result.
     if _looks_like_document_parser_unavailable(exc):
-      return _build_degraded_output(
-        payload,
-        f"文档解析工具不可用：{type(exc).__name__}: {exc}",
-      )
-    raise
+      return {
+        "output": _build_degraded_output(
+          payload,
+          f"文档解析工具不可用：{type(exc).__name__}: {exc}",
+        ),
+        "finalResponse": "",
+        "harness": {
+          "finishReason": "degraded",
+          "eventCount": 0,
+          "lastTurnEnd": None,
+          "eventSummary": [],
+          "degraded": True,
+          "exceptionType": type(exc).__name__,
+          "exceptionMessage": str(exc),
+        },
+      }
 
-  finish_reason = str(result.finish_reason).strip().lower()
+    raise HarnessExecutionError(
+      f"DeepSeek Harness runtime exception [{type(exc).__name__}]: {exc}",
+      finish_reason="error",
+      final_response="",
+      event_count=0,
+      last_turn_end=None,
+      event_summary=[],
+      exception_type=type(exc).__name__,
+    ) from exc
+
+  diagnostics = _result_diagnostics(result)
+  finish_reason = diagnostics["finishReason"]
+  final_response = result.final_response or ""
 
   if finish_reason == "error":
-    final_response = (result.final_response or "").strip()
-
-    # 如果 Harness 已经给出了响应，优先尝试把它转换成降级/标准结果。
-    if final_response:
-      return parse_output(final_response, payload)
-
-    raise RuntimeError(
-      "DeepSeek Harness execution failed"
+    harness_error = _last_harness_error(diagnostics)
+    raise HarnessExecutionError(
+      _format_harness_error_message(harness_error),
+      finish_reason=finish_reason,
+      final_response=final_response,
+      harness_error=harness_error,
+      event_count=diagnostics["eventCount"],
+      last_turn_end=diagnostics["lastTurnEnd"],
+      event_summary=diagnostics["eventSummary"],
     )
 
-  return parse_output(
-    result.final_response or "",
-    payload,
-    )
+  return {
+    "output": parse_output(final_response, payload),
+    "finalResponse": final_response,
+    "harness": diagnostics,
+  }
+
+
+def run_review(
+  payload: dict[str, Any],
+  run_id: str,
+) -> dict[str, Any]:
+  """Backward-compatible helper that returns only the normalized RiskTrace output."""
+  return run_review_detailed(payload, run_id)["output"]
 
 
 
@@ -840,14 +1091,17 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
       run_duration_ms = round((time.perf_counter() - run_started_at) * 1000)
 
     finish_reason = str(result.finish_reason)
-    normalized_finish_reason = finish_reason.strip().lower()
-    final_response = (result.final_response or "").strip()
+    normalized_finish_reason = _normalize_finish_reason(result.finish_reason)
+    final_response = result.final_response or ""
+    normalized_final_response = final_response.strip()
     response_preview = final_response[:1000]
     expected_response = "RISKTRACE_HARNESS_OK"
-    expected_response_matched = final_response == expected_response
+    expected_response_matched = normalized_final_response == expected_response
+    diagnostics = _result_diagnostics(result)
+    harness_error = _last_harness_error(diagnostics)
     ok = (
       normalized_finish_reason == "completed"
-      and bool(final_response)
+      and bool(normalized_final_response)
       and expected_response_matched
     )
 
@@ -860,6 +1114,9 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
         "responseLength": len(final_response),
         "responsePreview": response_preview,
         "expectedResponseMatched": expected_response_matched,
+        "harnessError": harness_error,
+        "lastTurnEnd": diagnostics["lastTurnEnd"],
+        "eventCount": diagnostics["eventCount"],
       },
     )
 
@@ -870,7 +1127,12 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
       "sdkVersion": _harness_sdk_version(),
       "finishReason": finish_reason,
       "response": response_preview,
+      "finalResponse": final_response,
       "expectedResponseMatched": expected_response_matched,
+      "harnessError": harness_error,
+      "lastTurnEnd": diagnostics["lastTurnEnd"],
+      "eventCount": diagnostics["eventCount"],
+      "eventSummary": diagnostics["eventSummary"],
       "durationMs": round((time.perf_counter() - started_at) * 1000),
       "logs": logs,
     }
@@ -890,7 +1152,12 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
       "sdkVersion": _harness_sdk_version(),
       "finishReason": "error",
       "response": "",
+      "finalResponse": "",
       "expectedResponseMatched": False,
+      "harnessError": None,
+      "lastTurnEnd": None,
+      "eventCount": 0,
+      "eventSummary": [],
       "durationMs": round((time.perf_counter() - started_at) * 1000),
       "logs": logs,
     }
