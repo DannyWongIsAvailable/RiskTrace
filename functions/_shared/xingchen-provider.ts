@@ -1,7 +1,7 @@
 import { AppError } from './errors'
 import type {
   CreateReviewRunInput,
-  ProviderRun,
+  ProviderRunSnapshot,
   ReviewProvider,
 } from './review-provider'
 
@@ -28,7 +28,7 @@ interface XingchenResponse {
  * 3. stream=false 时，最终业务结果从 choices[0].delta.content 读取；
  * 4. createRun() 在同一个 HTTP 请求中返回终态结果，由 review-service 立即校验并落库。
  *
- * 当前阶段只支持同步 Provider，不提供 getRun/cancelRun 异步生命周期。
+ * 该 Provider 仍为同步终态实现，因此不会进入 getRun() 轮询生命周期。
  */
 export class XingchenReviewProvider implements ReviewProvider {
   readonly name = 'xingchen' as const
@@ -54,7 +54,7 @@ export class XingchenReviewProvider implements ReviewProvider {
     this.flowId = flowId
   }
 
-  async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
+  async createRun(input: CreateReviewRunInput): Promise<ProviderRunSnapshot> {
     const workflowInput = {
       projectId: input.projectId,
       reviewRunId: input.reviewRunId,
@@ -71,7 +71,7 @@ export class XingchenReviewProvider implements ReviewProvider {
         REVIEW_RUN_ID: input.reviewRunId,
         PROJECT_TITLE: input.projectTitle,
         FILES_JSON: JSON.stringify(input.files),
-        ATTEMPT_NO: '1',
+        ATTEMPT_NO: String(input.attemptNo),
       },
       ext: {
         caller: 'workflow',
@@ -147,10 +147,8 @@ export class XingchenReviewProvider implements ReviewProvider {
 
     return {
       executeId,
-      result: {
-        state: 'succeeded',
-        content,
-      },
+      state: 'succeeded',
+      content,
     }
   }
 

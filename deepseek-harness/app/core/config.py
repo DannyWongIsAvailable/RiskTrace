@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # ---------------- FastAPI ----------------
 
     app_name: str = "RiskTrace DeepSeek Harness Service"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
 
     # ---------------- DeepSeek Harness ----------------
 
@@ -40,6 +40,23 @@ class Settings(BaseSettings):
     harness_max_concurrency: int = Field(
         default=1,
         alias="HARNESS_MAX_CONCURRENCY",
+        ge=1,
+    )
+
+    harness_run_db: Path = Field(
+        default=BASE_DIR / "data" / "runs.sqlite3",
+        alias="HARNESS_RUN_DB",
+    )
+
+    harness_stale_run_seconds: int = Field(
+        default=900,
+        alias="HARNESS_STALE_RUN_SECONDS",
+        ge=60,
+    )
+
+    harness_result_retention_hours: int = Field(
+        default=72,
+        alias="HARNESS_RESULT_RETENTION_HOURS",
         ge=1,
     )
 
@@ -83,6 +100,7 @@ class Settings(BaseSettings):
         self.dsh_home.mkdir(parents=True, exist_ok=True)
         self.harness_workspace.mkdir(parents=True, exist_ok=True)
         self.harness_session_root.mkdir(parents=True, exist_ok=True)
+        self.harness_run_db.parent.mkdir(parents=True, exist_ok=True)
 
 
 settings = Settings()

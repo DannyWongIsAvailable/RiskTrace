@@ -18,10 +18,11 @@ import {
   prepareReviewRetry,
   requireReviewRunById,
   requireReviewRunByProject,
+  updateProviderStatus,
   updateReviewState,
 } from './review-repository'
 import { createConfiguredReviewProvider } from './review-provider-factory'
-import type { ProviderRunResult, ReviewProvider } from './review-provider'
+import type { ProviderRunSnapshot, ReviewProvider } from './review-provider'
 import {
   normalizeMaterialAnalysis,
   normalizeReviewReport,
@@ -35,8 +36,6 @@ export async function startProjectReview(
   env: Env,
   input: { projectId: string },
 ): Promise<ReviewRunRow> {
-  const provider = createConfiguredReviewProvider(env)
-
   const project = await requireProject(env.risktrace_db, input.projectId)
   const documents = await requireUploadedDocuments(env, input.projectId)
   const now = new Date().toISOString()
@@ -52,14 +51,13 @@ export async function startProjectReview(
   if (run.status === 'failed') {
     throw new AppError('REVIEW_RETRY_REQUIRED', '合规审查已失败，请使用重试接口', 409)
   }
+  if (run.provider_execute_id) {
+    return run
+  }
+
+  const provider = createConfiguredReviewProvider(env)
   try {
-    return await createProviderRun(
-      env,
-      provider,
-      project,
-      run.id,
-      documents,
-    )
+    return await createProviderRun(env, provider, project, run, documents)
   } catch (error) {
     await markReviewFailed(env, {
       reviewRunId: run.id,
@@ -93,14 +91,9 @@ export async function retryProjectReview(
     projectId: input.projectId,
     now,
   })
+  const retryRun = await requireReviewRunById(env.risktrace_db, run.id)
   try {
-    return await createProviderRun(
-      env,
-      provider,
-      project,
-      run.id,
-      documents,
-    )
+    return await createProviderRun(env, provider, project, retryRun, documents)
   } catch (error) {
     await markReviewFailed(env, {
       reviewRunId: run.id,
@@ -116,7 +109,24 @@ export async function getReviewStatus(
   env: Env,
   projectId: string,
 ): Promise<ReviewStatusResponse> {
-  const run = await requireReviewRunByProject(env.risktrace_db, projectId)
+  let run = await requireReviewRunByProject(env.risktrace_db, projectId)
+
+  if (run.status === 'reviewing' && run.provider_execute_id) {
+    try {
+      run = await refreshProviderRun(env, run)
+    } catch (error) {
+      if (!isTransientProviderRefreshError(error)) {
+        throw error
+      }
+      // A temporary GET /runs failure must not turn a healthy background execution into a
+      // business-level failure. The next browser poll will reconcile the same executeId again.
+      console.warn('Provider 状态暂时无法刷新，保留 reviewing 状态', {
+        projectId,
+        reviewRunId: run.id,
+        code: error.code,
+      })
+    }
+  }
 
   const [materialAnalysisAvailable, reportAvailable] = await Promise.all([
     reviewResultExists(env.risktrace_db, run.id, 'material_analysis'),
@@ -153,40 +163,86 @@ async function createProviderRun(
   env: Env,
   provider: ReviewProvider,
   project: ProjectRow,
-  reviewRunId: string,
+  run: ReviewRunRow,
   documents: Awaited<ReturnType<typeof listDocuments>>,
 ): Promise<ReviewRunRow> {
   const files = await createReviewProviderFileList(env, documents)
-
-  // Strictly synchronous: do not persist a Provider starting/running claim before this call.
-  // The HTTP request waits here until the Provider reaches a terminal state. This removes the
-  // asynchronous-era running lock that could turn a long synchronous request re-entry into a 409.
-  // executeId is recorded only after the terminal response as an audit/trace identifier.
-  const providerRun = await provider.createRun({
+  const snapshot = await provider.createRun({
     projectId: project.id,
-    reviewRunId,
+    reviewRunId: run.id,
     projectTitle: project.title,
+    attemptNo: run.attempt_count,
     files,
   })
 
   await attachProviderExecuteId(env.risktrace_db, {
-    reviewRunId,
+    reviewRunId: run.id,
     providerName: provider.name,
-    executeId: providerRun.executeId,
+    executeId: snapshot.executeId,
+    providerStatus: providerStatusForSnapshot(snapshot),
+    progress: progressForSnapshot(snapshot),
     now: new Date().toISOString(),
   })
 
-  const attachedRun = await requireReviewRunById(env.risktrace_db, reviewRunId)
-  await applyProviderRunResult(env, attachedRun, providerRun.result)
+  const attachedRun = await requireReviewRunById(env.risktrace_db, run.id)
+  if (snapshot.state === 'queued' || snapshot.state === 'running') {
+    return attachedRun
+  }
 
-  return requireReviewRunById(env.risktrace_db, reviewRunId)
+  await applyProviderRunResult(env, attachedRun, snapshot)
+  return requireReviewRunById(env.risktrace_db, run.id)
+}
+
+async function refreshProviderRun(env: Env, run: ReviewRunRow): Promise<ReviewRunRow> {
+  if (!run.provider_execute_id || run.status !== 'reviewing') {
+    return run
+  }
+
+  const provider = createConfiguredReviewProvider(env)
+  if (run.provider_name && provider.name !== run.provider_name) {
+    throw new AppError(
+      'WORKFLOW_PROVIDER_INVALID_CONFIG',
+      '当前 Provider 配置与正在执行的审查任务不一致',
+      500,
+    )
+  }
+  if (!provider.getRun) {
+    throw new AppError(
+      'WORKFLOW_PROVIDER_INVALID_CONFIG',
+      '当前合规审查 Provider 不支持异步状态查询',
+      500,
+    )
+  }
+
+  const snapshot = await provider.getRun(run.provider_execute_id)
+  if (snapshot.executeId !== run.provider_execute_id) {
+    throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', 'Provider 返回了错误的运行编号', 502)
+  }
+
+  if (snapshot.state === 'queued' || snapshot.state === 'running') {
+    await updateProviderStatus(env.risktrace_db, {
+      reviewRunId: run.id,
+      projectId: run.project_id,
+      providerStatus: snapshot.state === 'queued' ? 'starting' : 'running',
+      progress: snapshot.state === 'queued' ? 10 : 20,
+      now: new Date().toISOString(),
+    })
+    return requireReviewRunById(env.risktrace_db, run.id)
+  }
+
+  await applyProviderRunResult(env, run, snapshot)
+  return requireReviewRunById(env.risktrace_db, run.id)
 }
 
 async function applyProviderRunResult(
   env: Env,
   run: ReviewRunRow,
-  providerResult: ProviderRunResult,
+  providerResult: ProviderRunSnapshot,
 ): Promise<void> {
+  if (providerResult.state === 'queued' || providerResult.state === 'running') {
+    return
+  }
+
   if (providerResult.state === 'interrupted') {
     await markReviewFailed(env, {
       reviewRunId: run.id,
@@ -220,6 +276,42 @@ async function applyProviderRunResult(
       message: error instanceof AppError ? error.message : '审查结果校验失败',
     })
   }
+}
+
+function providerStatusForSnapshot(snapshot: ProviderRunSnapshot) {
+  switch (snapshot.state) {
+    case 'queued':
+      return 'starting' as const
+    case 'running':
+      return 'running' as const
+    case 'succeeded':
+      return 'success' as const
+    case 'interrupted':
+      return 'interrupt' as const
+    case 'failed':
+      return 'failed' as const
+  }
+}
+
+function progressForSnapshot(snapshot: ProviderRunSnapshot): number {
+  switch (snapshot.state) {
+    case 'queued':
+      return 10
+    case 'running':
+      return 20
+    case 'succeeded':
+      return 90
+    case 'interrupted':
+    case 'failed':
+      return 0
+  }
+}
+
+function isTransientProviderRefreshError(error: unknown): error is AppError {
+  return (
+    error instanceof AppError &&
+    ['WORKFLOW_PROVIDER_UNAVAILABLE', 'WORKFLOW_PROVIDER_TIMEOUT'].includes(error.code)
+  )
 }
 
 async function persistCompletedProviderOutput(

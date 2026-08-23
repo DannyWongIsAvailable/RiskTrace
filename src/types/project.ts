@@ -90,11 +90,24 @@ export interface UploadSession {
 export interface CompleteUploadsResult {
   projectId: string
   reviewRunId: string
-  status: 'completed' | 'failed'
-  stage: 'report_completed' | 'failed'
+  status: 'reviewing' | 'completed' | 'failed'
+  stage: Exclude<ProjectStage, 'waiting_for_upload' | 'uploading_files'>
+  reviewStatusUrl: string
   materialAnalysisUrl: string
   reportUrl: string
   error: { code: string; message: string } | null
+}
+
+export interface ReviewStatusResponse {
+  projectId: string
+  reviewRunId: string
+  status: 'reviewing' | 'completed' | 'failed'
+  stage: Exclude<ProjectStage, 'waiting_for_upload' | 'uploading_files'>
+  progress: number
+  message: string
+  materialAnalysisAvailable: boolean
+  reportAvailable: boolean
+  error?: { code: string; message: string; retryable: boolean }
 }
 
 export interface MaterialAnalysis {

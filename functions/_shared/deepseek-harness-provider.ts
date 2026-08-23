@@ -1,20 +1,19 @@
 import { AppError } from './errors'
 import type {
   CreateReviewRunInput,
-  ProviderRun,
-  ProviderRunResult,
+  ProviderRunSnapshot,
   ReviewProvider,
 } from './review-provider'
 
-const REQUEST_TIMEOUT_MS = 300_000
+const CREATE_REQUEST_TIMEOUT_MS = 30_000
+const STATUS_REQUEST_TIMEOUT_MS = 15_000
 const CONTRACT_VERSION = 'risktrace.review.v1'
 
 /**
- * Synchronous adapter for the DeepSeek Harness gateway.
+ * Asynchronous adapter for the RiskTrace DeepSeek Harness gateway.
  *
- * POST /runs must wait for Harness/model completion and return a terminal status in the same HTTP
- * response. RiskTrace deliberately does not call GET /runs/{id} or a cancel endpoint in the current
- * synchronous phase.
+ * POST /runs only creates an idempotent background task and should return quickly. GET /runs/{id}
+ * reads the current snapshot; queued/running are normal non-terminal states.
  */
 export class DeepSeekHarnessReviewProvider implements ReviewProvider {
   readonly name = 'deepseek-harness' as const
@@ -30,70 +29,84 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
     }
   }
 
-  async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
-    const response = await this.request({
-      contract: CONTRACT_VERSION,
-      idempotencyKey: input.reviewRunId,
-      project: {
-        projectId: input.projectId,
-        reviewRunId: input.reviewRunId,
-        projectTitle: input.projectTitle,
+  async createRun(input: CreateReviewRunInput): Promise<ProviderRunSnapshot> {
+    const response = await this.requestJson(
+      'POST',
+      '/runs',
+      {
+        contract: CONTRACT_VERSION,
+        idempotencyKey: `${input.reviewRunId}:attempt:${input.attemptNo}`,
+        project: {
+          projectId: input.projectId,
+          reviewRunId: input.reviewRunId,
+          projectTitle: input.projectTitle,
+        },
+        files: input.files,
       },
-      files: input.files,
-    })
+      CREATE_REQUEST_TIMEOUT_MS,
+    )
 
-    const executeId = readRunId(response)
-    if (!executeId) {
-      throw new AppError('WORKFLOW_START_FAILED', '合规审查服务未返回运行编号', 502)
-    }
-
-    return {
-      executeId,
-      result: normalizeTerminalRunResult(response),
-    }
+    return normalizeRunSnapshot(response)
   }
 
-  private async request(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async getRun(executeId: string): Promise<ProviderRunSnapshot> {
+    const response = await this.requestJson(
+      'GET',
+      `/runs/${encodeURIComponent(executeId)}`,
+      undefined,
+      STATUS_REQUEST_TIMEOUT_MS,
+    )
+    return normalizeRunSnapshot(response)
+  }
+
+  private async requestJson(
+    method: 'GET' | 'POST',
+    path: string,
+    body: Record<string, unknown> | undefined,
+    timeoutMs: number,
+  ): Promise<Record<string, unknown>> {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
-      const response = await fetch(`${this.baseUrl}/runs`, {
-        method: 'POST',
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method,
         headers: {
           Accept: 'application/json',
-          'Content-Type': 'application/json',
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
           ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
         },
-        body: JSON.stringify(body),
+        ...(body ? { body: JSON.stringify(body) } : {}),
         signal: controller.signal,
       })
 
-      if (!response.ok) {
-        throw new AppError('WORKFLOW_PROVIDER_UNAVAILABLE', '合规审查服务暂时不可用', 502)
-      }
-
       const responseText = await response.text()
-      if (!responseText.trim()) {
-        throw new AppError(
-          'WORKFLOW_PROVIDER_INVALID_RESPONSE',
-          '合规审查服务响应格式无效',
-          502,
-        )
-      }
-
-      let value: unknown
-      try {
-        value = JSON.parse(responseText) as unknown
-      } catch {
-        throw new AppError(
-          'WORKFLOW_PROVIDER_INVALID_RESPONSE',
-          '合规审查服务响应格式无效',
-          502,
-        )
+      let value: unknown = null
+      if (responseText.trim()) {
+        try {
+          value = JSON.parse(responseText) as unknown
+        } catch {
+          throw new AppError(
+            'WORKFLOW_PROVIDER_INVALID_RESPONSE',
+            '合规审查服务响应格式无效',
+            502,
+          )
+        }
       }
 
       const record = readObject(value)
+      if (!response.ok) {
+        const remoteMessage =
+          readString(record?.detail) ??
+          readString(record?.message) ??
+          readString(readObject(record?.error)?.message)
+        throw new AppError(
+          'WORKFLOW_PROVIDER_UNAVAILABLE',
+          remoteMessage ? `合规审查服务暂时不可用：${remoteMessage}` : '合规审查服务暂时不可用',
+          502,
+        )
+      }
+
       if (!record) {
         throw new AppError(
           'WORKFLOW_PROVIDER_INVALID_RESPONSE',
@@ -101,6 +114,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
           502,
         )
       }
+
       return readObject(record.data) ?? record
     } catch (error) {
       if (error instanceof AppError) {
@@ -116,35 +130,38 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
   }
 }
 
-function normalizeTerminalRunResult(record: Record<string, unknown>): ProviderRunResult {
+function normalizeRunSnapshot(record: Record<string, unknown>): ProviderRunSnapshot {
+  const executeId = readRunId(record)
   const status = readString(record.status)?.toLowerCase()
   const providerMessage =
     readString(record.message) ?? readString(readObject(record.error)?.message) ?? undefined
-  const output = record.output ?? record.result ?? readObject(record.data)?.output
-  const content = stringifyProviderContent(output)
 
+  if (!executeId) {
+    throw new AppError('WORKFLOW_START_FAILED', '合规审查服务未返回运行编号', 502)
+  }
   if (!status) {
     throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', '合规审查服务未返回运行状态', 502)
   }
 
-  if (['queued', 'pending', 'starting', 'running', 'in_progress'].includes(status)) {
-    throw new AppError(
-      'WORKFLOW_PROVIDER_INVALID_RESPONSE',
-      '合规审查服务返回了非终态结果；当前 RiskTrace 仅支持同步审查',
-      502,
-    )
+  if (['queued', 'pending', 'starting'].includes(status)) {
+    return { executeId, state: 'queued', providerMessage }
+  }
+  if (['running', 'in_progress'].includes(status)) {
+    return { executeId, state: 'running', providerMessage }
   }
   if (['success', 'succeeded', 'completed', 'complete'].includes(status)) {
+    const output = record.output ?? record.result ?? readObject(record.data)?.output
+    const content = stringifyProviderContent(output)
     if (!content) {
       throw new AppError('WORKFLOW_OUTPUT_INVALID', '合规审查服务已完成但未返回审查结果', 502)
     }
-    return { state: 'succeeded', content, providerMessage }
+    return { executeId, state: 'succeeded', content, providerMessage }
   }
   if (['interrupt', 'interrupted', 'requires_action'].includes(status)) {
-    return { state: 'interrupted', content, providerMessage }
+    return { executeId, state: 'interrupted', providerMessage }
   }
   if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
-    return { state: 'failed', providerMessage }
+    return { executeId, state: 'failed', providerMessage }
   }
 
   throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', '合规审查服务返回了未知运行状态', 502)

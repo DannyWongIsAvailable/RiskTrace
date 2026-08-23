@@ -10,13 +10,23 @@ import {
   createUploadSession,
   getProject,
   getProjectMaterialAnalysis,
+  getProjectReviewStatus,
   uploadProjectMaterial,
 } from '@/api/modules'
 import { isApiError } from '@/api/request'
 import MaterialAnalysisPanel from '@/components/projects/MaterialAnalysisPanel.vue'
 import { AppIcons } from '@/icons'
-import type { MaterialAnalysis, ProjectDetail, ProjectStage } from '@/types/project'
+import type {
+  MaterialAnalysis,
+  ProjectDetail,
+  ProjectStage,
+  ReviewStatusResponse,
+} from '@/types/project'
 import type { StatusTone } from '@/types/ui'
+
+const REVIEW_POLL_INTERVAL_MS = 2500
+const REVIEW_POLL_RETRY_MS = 5000
+const REVIEW_MAX_WAIT_MS = 20 * 60_000
 
 const route = useRoute()
 const router = useRouter()
@@ -27,6 +37,7 @@ const fileList = ref<UploadUserFile[]>([])
 const uploadRef = ref<UploadInstance>()
 const loading = ref(true)
 const uploading = ref(false)
+const pollingReview = ref(false)
 const uploadPhase = ref<'idle' | 'uploading' | 'reviewing'>('idle')
 const loadError = ref('')
 const actionError = ref('')
@@ -39,8 +50,8 @@ const canUpload = computed(
 )
 const currentStage = computed<ProjectStage>(() => {
   if (uploadPhase.value === 'uploading') return 'uploading_files'
-  if (uploadPhase.value === 'reviewing') return 'domain_review_running'
-  return project.value?.stage ?? 'waiting_for_upload'
+  return project.value?.stage ??
+    (uploadPhase.value === 'reviewing' ? 'material_analysis_running' : 'waiting_for_upload')
 })
 const activeStep = computed(() => {
   switch (currentStage.value) {
@@ -61,11 +72,12 @@ const activeStep = computed(() => {
 })
 const reviewProgress = computed(() => {
   if (uploadPhase.value === 'uploading') return 20
-  if (uploadPhase.value === 'reviewing') return 60
-  return project.value?.review?.progress ?? 0
+  return project.value?.review?.progress ?? (uploadPhase.value === 'reviewing' ? 10 : 0)
 })
 const reviewMessage = computed(() => {
-  if (uploadPhase.value === 'reviewing') return '同步合规审查正在执行，页面正在等待 API 返回最终结果'
+  if (uploadPhase.value === 'reviewing' && !project.value?.review) {
+    return '审查任务已提交，正在等待后台执行状态'
+  }
   return stageLabel(currentStage.value)
 })
 const reviewTone = computed<StatusTone>(() => {
@@ -76,21 +88,21 @@ const reviewTone = computed<StatusTone>(() => {
 const reportReady = computed(() => project.value?.status === 'completed')
 const uploadActionText = computed(() => {
   if (uploadPhase.value === 'uploading') return '正在上传材料'
-  if (uploadPhase.value === 'reviewing') return '正在执行合规审查，请勿关闭页面'
+  if (uploadPhase.value === 'reviewing') return '合规审查后台执行中'
   return '上传全部材料并开始审查'
 })
 const uploadNotice = computed(() => {
   if (uploadPhase.value === 'reviewing') {
     return {
-      title: '正在执行同步合规审查',
+      title: '合规审查任务已提交',
       description:
-        '材料已上传完成，当前请求会一直等待 Provider 返回材料分类与最终报告。期间不会轮询审查状态，请勿关闭或刷新当前页面。',
+        '后台 Harness 正在独立执行审查，页面会自动轮询最新状态。现在可以安全离开或刷新页面，重新进入项目后会继续恢复状态查询。',
     }
   }
 
   return {
     title: '正在上传材料',
-    description: '正在上传并确认项目材料，完成后将立即开始同步合规审查。',
+    description: '正在上传并确认项目材料，完成后将立即提交后台合规审查任务。',
   }
 })
 
@@ -106,14 +118,20 @@ async function loadMaterialAnalysisIfCompleted(): Promise<void> {
 async function loadPage(): Promise<void> {
   loading.value = true
   loadError.value = ''
+  let shouldResumeReview = false
   try {
     project.value = await getProject(projectId.value, controller.signal)
     await loadMaterialAnalysisIfCompleted()
+    shouldResumeReview = project.value.review?.status === 'reviewing'
   } catch (error) {
     if (isApiError(error) && error.code === 'REQUEST_CANCELLED') return
     loadError.value = error instanceof Error ? error.message : '项目材料加载失败'
   } finally {
     loading.value = false
+  }
+
+  if (shouldResumeReview) {
+    void pollReviewUntilTerminal(false)
   }
 }
 
@@ -173,28 +191,26 @@ async function handleUpload(): Promise<void> {
     )
 
     uploadPhase.value = 'reviewing'
-
-    // Strictly synchronous: this await is the only review wait path. No timer/polling request is
-    // started while /uploads/complete is running.
-    const review = await completeProjectUploads(projectId.value, controller.signal)
-
+    const submitted = await completeProjectUploads(projectId.value, controller.signal)
     project.value = await getProject(projectId.value, controller.signal)
 
-    if (review.status === 'failed') {
-      actionError.value = review.error?.message ?? project.value.review?.error?.message ?? '合规审查失败'
+    if (submitted.status === 'failed') {
+      actionError.value =
+        submitted.error?.message ?? project.value.review?.error?.message ?? '合规审查失败'
       return
     }
 
-    await loadMaterialAnalysisIfCompleted()
-    ElMessage.success('完整合规审查已完成')
-    uploadRef.value?.clearFiles()
-    fileList.value = []
+    if (submitted.status === 'completed') {
+      await handleReviewCompleted()
+      return
+    }
+
+    ElMessage.success('审查任务已提交，后台会继续执行')
+    await pollReviewUntilTerminal(true)
   } catch (error) {
     if (isApiError(error) && error.code === 'REQUEST_CANCELLED') return
-    actionError.value = error instanceof Error ? error.message : '材料上传或同步合规审查失败'
+    actionError.value = error instanceof Error ? error.message : '材料上传或合规审查启动失败'
 
-    // Provider/API errors may already have persisted the review as failed. Refresh once after the
-    // synchronous request settles; this is not polling and never calls Provider status APIs.
     try {
       project.value = await getProject(projectId.value, controller.signal)
       await loadMaterialAnalysisIfCompleted()
@@ -203,8 +219,109 @@ async function handleUpload(): Promise<void> {
     }
   } finally {
     uploading.value = false
+    if (!pollingReview.value) {
+      uploadPhase.value = 'idle'
+    }
+  }
+}
+
+async function pollReviewUntilTerminal(showCompletionMessage: boolean): Promise<void> {
+  if (pollingReview.value || controller.signal.aborted) return
+
+  pollingReview.value = true
+  uploadPhase.value = 'reviewing'
+  const startedAt = Date.now()
+
+  try {
+    while (!controller.signal.aborted) {
+      if (Date.now() - startedAt >= REVIEW_MAX_WAIT_MS) {
+        actionError.value =
+          '审查仍在后台执行，本页面已停止持续轮询。稍后刷新或重新进入项目即可继续查看状态。'
+        return
+      }
+
+      let review: ReviewStatusResponse
+      try {
+        review = await getProjectReviewStatus(projectId.value, controller.signal)
+      } catch (error) {
+        if (isApiError(error) && error.code === 'REQUEST_CANCELLED') return
+
+        if (isApiError(error) && error.status >= 400 && error.status < 500) {
+          throw error
+        }
+
+        actionError.value = '状态查询暂时失败，正在自动重试；后台审查不会因此停止。'
+        await delay(REVIEW_POLL_RETRY_MS, controller.signal)
+        continue
+      }
+
+      applyReviewStatus(review)
+      actionError.value = ''
+
+      if (review.status === 'completed') {
+        project.value = await getProject(projectId.value, controller.signal)
+        await handleReviewCompleted(showCompletionMessage)
+        return
+      }
+
+      if (review.status === 'failed') {
+        actionError.value = review.error?.message ?? '合规审查失败'
+        project.value = await getProject(projectId.value, controller.signal)
+        return
+      }
+
+      await delay(REVIEW_POLL_INTERVAL_MS, controller.signal)
+    }
+  } catch (error) {
+    if (isApiError(error) && error.code === 'REQUEST_CANCELLED') return
+    actionError.value = error instanceof Error ? error.message : '审查状态查询失败'
+  } finally {
+    pollingReview.value = false
     uploadPhase.value = 'idle'
   }
+}
+
+function applyReviewStatus(review: ReviewStatusResponse): void {
+  if (!project.value) return
+
+  project.value.status = review.status
+  project.value.stage = review.stage
+  if (project.value.review) {
+    project.value.review.status = review.status
+    project.value.review.stage = review.stage
+    project.value.review.progress = review.progress
+    project.value.review.error = review.error
+      ? { code: review.error.code, message: review.error.message }
+      : null
+  }
+}
+
+async function handleReviewCompleted(showMessage = true): Promise<void> {
+  await loadMaterialAnalysisIfCompleted()
+  uploadRef.value?.clearFiles()
+  fileList.value = []
+  if (showMessage) {
+    ElMessage.success('完整合规审查已完成')
+  }
+}
+
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve()
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      signal.removeEventListener('abort', handleAbort)
+      resolve()
+    }, ms)
+    const handleAbort = () => {
+      window.clearTimeout(timeoutId)
+      resolve()
+    }
+    signal.addEventListener('abort', handleAbort, { once: true })
+  })
 }
 
 function formatFileSize(size: number): string {
@@ -219,7 +336,7 @@ function stageLabel(stage: ProjectStage): string {
     uploading_files: '材料上传中',
     material_analysis_running: '正在理解项目材料',
     material_analysis_completed: '材料理解已完成，准备开始自动合规审查',
-    domain_review_running: '正在执行同步自动合规审查',
+    domain_review_running: '正在执行自动合规审查',
     report_aggregating: '自动合规审查已完成，正在生成结果',
     report_completed: '合规审查报告已生成',
     failed: '合规审查失败',
@@ -285,7 +402,7 @@ onBeforeUnmount(() => controller.abort())
       />
 
       <InlineNotice
-        v-if="uploading"
+        v-if="uploading || uploadPhase === 'reviewing'"
         :title="uploadNotice.title"
         :description="uploadNotice.description"
         tone="primary"

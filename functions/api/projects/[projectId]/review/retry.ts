@@ -24,8 +24,13 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
           : null,
     },
     {
-      status: 200,
-      message: run.status === 'completed' ? '完整合规审查已重新执行完成' : '合规审查重试失败',
+      status: run.status === 'reviewing' ? 202 : 200,
+      message:
+        run.status === 'reviewing'
+          ? '合规审查重试任务已提交'
+          : run.status === 'completed'
+            ? '完整合规审查已重新执行完成'
+            : '合规审查重试失败',
       requestId: data.requestId,
     },
   )

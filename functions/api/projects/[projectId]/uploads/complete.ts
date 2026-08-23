@@ -9,9 +9,6 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
   data,
 }) => {
   const projectId = getPathParam(params, 'projectId')
-
-  // Synchronous contract: this request stays open until the Provider reaches a terminal state
-  // and RiskTrace has validated/persisted the final output.
   const run = await startProjectReview(env, { projectId })
 
   return success(
@@ -20,6 +17,7 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
       reviewRunId: run.id,
       status: run.status,
       stage: run.stage,
+      reviewStatusUrl: `/api/projects/${projectId}/review`,
       materialAnalysisUrl: `/api/projects/${projectId}/material-analysis`,
       reportUrl: `/api/projects/${projectId}/report`,
       error:
@@ -28,8 +26,13 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
           : null,
     },
     {
-      status: 200,
-      message: run.status === 'completed' ? '完整合规审查已完成' : '合规审查执行失败',
+      status: run.status === 'reviewing' ? 202 : 200,
+      message:
+        run.status === 'reviewing'
+          ? '合规审查任务已提交'
+          : run.status === 'completed'
+            ? '完整合规审查已完成'
+            : '合规审查执行失败',
       requestId: data.requestId,
     },
   )

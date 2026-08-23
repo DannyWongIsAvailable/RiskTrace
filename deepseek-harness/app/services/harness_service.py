@@ -4,7 +4,7 @@ import json
 import time
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from deepseek_harness import DeepSeekHarness
@@ -961,6 +961,7 @@ def _format_harness_error_message(
 def run_review_detailed(
   payload: dict[str, Any],
   run_id: str,
+  on_notification: Callable[[Any], None] | None = None,
 ) -> dict[str, Any]:
   """Run a review and keep the official SDK result metadata for API diagnostics."""
 
@@ -989,6 +990,7 @@ def run_review_detailed(
       result = harness.run(
         prompt,
         session_id=harness_session_id,
+        on_notification=on_notification,
       )
   except Exception as exc:
     # Preserve the existing product behavior for explicitly recognized document

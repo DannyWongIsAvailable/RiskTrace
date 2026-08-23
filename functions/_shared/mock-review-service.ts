@@ -7,7 +7,7 @@ import type {
 import { createId } from './ids'
 import type {
   CreateReviewRunInput,
-  ProviderRun,
+  ProviderRunSnapshot,
   ReviewProvider,
   ReviewProviderFile,
 } from './review-provider'
@@ -41,19 +41,17 @@ const CATEGORY_PATTERNS: Array<{
 export class MockReviewProvider implements ReviewProvider {
   readonly name = 'mock' as const
 
-  async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
+  async createRun(input: CreateReviewRunInput): Promise<ProviderRunSnapshot> {
     const executeId = createMockExecuteId(input.reviewRunId)
     const materialAnalysis = buildMaterialAnalysis(input.projectTitle, input.files)
 
     return {
       executeId,
-      result: {
-        state: 'succeeded',
-        content: JSON.stringify({
-          materialAnalysis,
-          finalReport: buildReport(materialAnalysis),
-        }),
-      },
+      state: 'succeeded',
+      content: JSON.stringify({
+        materialAnalysis,
+        finalReport: buildReport(materialAnalysis),
+      }),
     }
   }
 }

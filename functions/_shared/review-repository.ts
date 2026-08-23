@@ -1,6 +1,6 @@
 import type { ProviderStatus, ReviewRunRow, ReviewStage, ReviewStatus } from './domain'
-import type { ReviewProviderName } from './review-provider'
 import { AppError } from './errors'
+import type { ReviewProviderName } from './review-provider'
 
 export async function createOrGetReviewRun(
   db: D1Database,
@@ -12,13 +12,13 @@ export async function createOrGetReviewRun(
         `INSERT OR IGNORE INTO review_runs (
           id, project_id, status, stage, provider_status, progress,
           attempt_count, started_at, updated_at
-        ) VALUES (?, ?, 'reviewing', 'material_analysis_completed', 'pending', 40, 1, ?, ?)`,
+        ) VALUES (?, ?, 'reviewing', 'material_analysis_running', 'pending', 10, 1, ?, ?)`,
       )
       .bind(input.id, input.projectId, input.now, input.now),
     db
       .prepare(
         `UPDATE projects
-         SET status = 'reviewing', stage = 'material_analysis_completed', updated_at = ?
+         SET status = 'reviewing', stage = 'material_analysis_running', updated_at = ?
          WHERE id = ? AND status IN ('draft', 'uploading')`,
       )
       .bind(input.now, input.projectId),
@@ -71,21 +71,79 @@ export async function attachProviderExecuteId(
     reviewRunId: string
     providerName: ReviewProviderName
     executeId: string
+    providerStatus: ProviderStatus
+    progress: number
     now: string
   },
 ): Promise<void> {
   const result = await db
     .prepare(
       `UPDATE review_runs
-       SET provider_name = ?, provider_execute_id = ?, updated_at = ?
-       WHERE id = ? AND status = 'reviewing'`,
+       SET provider_name = ?, provider_execute_id = ?, provider_status = ?, progress = ?, updated_at = ?
+       WHERE id = ? AND status = 'reviewing'
+         AND (provider_execute_id IS NULL OR provider_execute_id = ?)`,
     )
-    .bind(input.providerName, input.executeId, input.now, input.reviewRunId)
+    .bind(
+      input.providerName,
+      input.executeId,
+      input.providerStatus,
+      input.progress,
+      input.now,
+      input.reviewRunId,
+      input.executeId,
+    )
     .run()
 
-  if ((result.meta.changes ?? 0) !== 1) {
-    throw new AppError('CONFLICTING_STATE', '审查运行状态已变化，无法保存 Provider 调用追踪编号', 409)
+  if ((result.meta.changes ?? 0) === 1) {
+    return
   }
+
+  // Concurrent duplicate submissions may race with a fast reconciliation. If the same executeId
+  // was already attached, the operation is idempotently complete even when the business run has
+  // meanwhile reached a terminal state.
+  const current = await requireReviewRunById(db, input.reviewRunId)
+  if (
+    current.provider_execute_id === input.executeId &&
+    current.provider_name === input.providerName
+  ) {
+    return
+  }
+
+  throw new AppError('CONFLICTING_STATE', '审查运行状态已变化，无法保存 Provider 调用追踪编号', 409)
+}
+
+export async function updateProviderStatus(
+  db: D1Database,
+  input: {
+    reviewRunId: string
+    projectId: string
+    providerStatus: 'starting' | 'running'
+    progress: number
+    now: string
+  },
+): Promise<void> {
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE review_runs
+         SET stage = 'material_analysis_running', provider_status = ?, progress = ?, updated_at = ?
+         WHERE id = ? AND project_id = ? AND status = 'reviewing'`,
+      )
+      .bind(
+        input.providerStatus,
+        input.progress,
+        input.now,
+        input.reviewRunId,
+        input.projectId,
+      ),
+    db
+      .prepare(
+        `UPDATE projects
+         SET status = 'reviewing', stage = 'material_analysis_running', updated_at = ?
+         WHERE id = ? AND status = 'reviewing'`,
+      )
+      .bind(input.now, input.projectId),
+  ])
 }
 
 export async function updateReviewState(
@@ -165,8 +223,8 @@ export async function prepareReviewRetry(
         // provider_name is introduced by migrations/0002_review_provider.sql.
         // noinspection SqlResolve
         `UPDATE review_runs
-         SET status = 'reviewing', stage = 'material_analysis_completed',
-             provider_name = NULL, provider_execute_id = NULL, provider_status = 'pending', progress = 40,
+         SET status = 'reviewing', stage = 'material_analysis_running',
+             provider_name = NULL, provider_execute_id = NULL, provider_status = 'pending', progress = 10,
              attempt_count = attempt_count + 1,
              error_code = NULL, error_message = NULL, finished_at = NULL, updated_at = ?
          WHERE id = ? AND status = 'failed'`,
@@ -175,7 +233,7 @@ export async function prepareReviewRetry(
     db
       .prepare(
         `UPDATE projects
-         SET status = 'reviewing', stage = 'material_analysis_completed', updated_at = ?
+         SET status = 'reviewing', stage = 'material_analysis_running', updated_at = ?
          WHERE id = ?`,
       )
       .bind(input.now, input.projectId),

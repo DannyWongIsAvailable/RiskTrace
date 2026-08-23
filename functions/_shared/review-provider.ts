@@ -14,30 +14,33 @@ export interface CreateReviewRunInput {
   projectId: string
   reviewRunId: string
   projectTitle: string
+  attemptNo: number
   files: ReviewProviderFile[]
 }
 
-export interface ProviderRunResult {
-  state: 'succeeded' | 'interrupted' | 'failed'
+export type ProviderExecutionState =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'interrupted'
+  | 'failed'
+
+export interface ProviderRunSnapshot {
+  executeId: string
+  state: ProviderExecutionState
   /** Provider-neutral final output. A succeeded run must return materialAnalysis + finalReport. */
   content?: string
   providerMessage?: string
 }
 
-export interface ProviderRun {
-  /** Provider-side request/run identifier kept only for tracing; RiskTrace never polls it. */
-  executeId: string
-  /** Synchronous terminal result returned by the same createRun request. */
-  result: ProviderRunResult
-}
-
 /**
- * Stable synchronous boundary between RiskTrace review orchestration and any review runtime.
+ * Stable boundary between RiskTrace review orchestration and any review runtime.
  *
- * createRun() must not return until the provider has reached a terminal state. RiskTrace does not
- * poll provider run status and does not expose provider-specific asynchronous lifecycle methods.
+ * Synchronous providers may return a terminal snapshot from createRun(). Providers that return
+ * queued/running must implement getRun() so RiskTrace can reconcile their state from GET /review.
  */
 export interface ReviewProvider {
   readonly name: ReviewProviderName
-  createRun(input: CreateReviewRunInput): Promise<ProviderRun>
+  createRun(input: CreateReviewRunInput): Promise<ProviderRunSnapshot>
+  getRun?(executeId: string): Promise<ProviderRunSnapshot>
 }

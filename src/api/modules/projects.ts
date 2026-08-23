@@ -11,6 +11,7 @@ import type {
   ProjectListData,
   ProjectSummary,
   ReviewReport,
+  ReviewStatusResponse,
   UploadSession,
   UploadSessionFile,
 } from '@/types/project'
@@ -87,7 +88,7 @@ export function confirmDocumentUpload(
   )
 }
 
-const COMPLETE_UPLOADS_REVIEW_TIMEOUT_MS = 330_000
+const COMPLETE_UPLOADS_REVIEW_TIMEOUT_MS = 30_000
 
 export function completeProjectUploads(
   projectId: string,
@@ -98,10 +99,20 @@ export function completeProjectUploads(
     undefined,
     {
       signal,
-      // 同步 Provider 后端最长等待 300 秒，这里额外预留 30 秒网络/落库余量。
+      // 异步模式只负责提交任务，不再等待 Harness 完整执行结束。
       timeoutMs: COMPLETE_UPLOADS_REVIEW_TIMEOUT_MS,
     },
   )
+}
+
+export function getProjectReviewStatus(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<ReviewStatusResponse> {
+  return http.get<ReviewStatusResponse>(`/api/projects/${projectId}/review`, {
+    signal,
+    timeoutMs: 20_000,
+  })
 }
 
 export function getProjectMaterialAnalysis(

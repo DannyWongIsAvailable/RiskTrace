@@ -5,12 +5,26 @@ from fastapi import FastAPI
 from app.api.diagnostics import router as diagnostics_router
 from app.api.runs import router as runs_router
 from app.core.config import settings
+from app.services.run_manager import RunManager
+from app.storage.run_store import RunStore
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.ensure_directories()
-    yield
+    store = RunStore(settings.harness_run_db)
+    manager = RunManager(
+        store=store,
+        max_workers=settings.harness_max_concurrency,
+        result_retention_hours=settings.harness_result_retention_hours,
+    )
+    app.state.run_store = store
+    app.state.run_manager = manager
+    manager.reconcile_stale_runs_on_startup()
+    try:
+        yield
+    finally:
+        manager.shutdown()
 
 
 app = FastAPI(
