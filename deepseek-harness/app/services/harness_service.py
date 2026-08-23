@@ -231,10 +231,16 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
             run_duration_ms = round((time.perf_counter() - run_started_at) * 1000)
 
         finish_reason = str(result.finish_reason)
+        normalized_finish_reason = finish_reason.strip().lower()
         final_response = (result.final_response or "").strip()
         response_preview = final_response[:1000]
-        expected_response_matched = "RISKTRACE_HARNESS_OK" in final_response
-        ok = finish_reason.lower() != "error" and bool(final_response)
+        expected_response = "RISKTRACE_HARNESS_OK"
+        expected_response_matched = final_response == expected_response
+        ok = (
+            normalized_finish_reason == "completed"
+            and bool(final_response)
+            and expected_response_matched
+        )
 
         log(
             "success" if ok else "error",

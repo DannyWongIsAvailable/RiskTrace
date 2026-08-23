@@ -96,6 +96,11 @@ function readString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+function isDeepSeekHarnessProvider(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  return ['deepseek-harness', 'deepseek_harness', 'deepseek'].includes(normalized)
+}
+
 function readRemoteLogs(value: unknown): ProviderDiagnosticLogEntry[] {
   if (!Array.isArray(value)) {
     return []
@@ -167,6 +172,7 @@ export async function runProviderDiagnostics(
   const checkId = `provider-check-${crypto.randomUUID()}`
   const logs: ProviderDiagnosticLogEntry[] = []
   const configuredProvider = env.REVIEW_PROVIDER?.trim() || 'mock'
+  const providerConfiguredForHarness = isDeepSeekHarnessProvider(configuredProvider)
   const baseUrl = normalizeBaseUrl(env.DEEPSEEK_HARNESS_BASE_URL)
   const safeBaseUrl = toSafeUrl(baseUrl)
   const apiKey = env.DEEPSEEK_HARNESS_API_KEY?.trim() || null
@@ -185,9 +191,10 @@ export async function runProviderDiagnostics(
     harnessTimeoutMs: HARNESS_TIMEOUT_MS,
   })
 
-  if (configuredProvider !== 'deepseek-harness') {
-    addLog(logs, 'warning', 'functions', '当前 REVIEW_PROVIDER 不是 deepseek-harness', {
+  if (!providerConfiguredForHarness) {
+    addLog(logs, 'warning', 'functions', '当前 REVIEW_PROVIDER 未配置为 DeepSeek Harness', {
       configuredProvider,
+      acceptedValues: ['deepseek-harness', 'deepseek_harness', 'deepseek'],
     })
   }
 
@@ -330,18 +337,41 @@ export async function runProviderDiagnostics(
         responseBody: responseText.slice(0, MAX_RESPONSE_PREVIEW_LENGTH),
       })
     } else {
-      harnessState = readBoolean(payloadRecord.ok) === true ? 'passed' : 'failed'
+      const harnessRecord = readRecord(payloadRecord.harness)
+      const remoteOk = readBoolean(payloadRecord.ok) === true
+      const harnessOk = readBoolean(harnessRecord?.ok) === true
+      const finishReason = readString(harnessRecord?.finishReason)?.toLowerCase() ?? null
+      const expectedResponseMatched =
+        readBoolean(harnessRecord?.expectedResponseMatched) === true
+      const responseMatchedExactly =
+        readString(harnessRecord?.response) === 'RISKTRACE_HARNESS_OK'
+
+      const strictHarnessPassed =
+        remoteOk &&
+        harnessOk &&
+        finishReason === 'completed' &&
+        expectedResponseMatched &&
+        responseMatchedExactly
+
+      harnessState = strictHarnessPassed ? 'passed' : 'failed'
       addLog(
         logs,
         harnessState === 'passed' ? 'success' : 'error',
         'functions',
         harnessState === 'passed'
-          ? 'FastAPI Harness 诊断完成，模型调用成功'
-          : 'FastAPI Harness 诊断完成，但模型调用失败',
+          ? 'FastAPI Harness 诊断完成，模型调用严格校验通过'
+          : 'FastAPI Harness 诊断完成，但模型调用严格校验未通过',
         {
           status: response.status,
           durationMs: Date.now() - harnessStartedAt,
-          harness: readRecord(payloadRecord.harness),
+          validation: {
+            remoteOk,
+            harnessOk,
+            finishReason,
+            expectedResponseMatched,
+            responseMatchedExactly,
+          },
+          harness: harnessRecord,
         },
       )
     }
@@ -354,7 +384,10 @@ export async function runProviderDiagnostics(
   }
 
   const finishedAt = now()
-  const ok = fastApiState === 'passed' && harnessState === 'passed'
+  const ok =
+    providerConfiguredForHarness &&
+    fastApiState === 'passed' &&
+    harnessState === 'passed'
 
   addLog(
     logs,
@@ -362,6 +395,7 @@ export async function runProviderDiagnostics(
     'functions',
     ok ? 'Provider 全链路检查通过' : 'Provider 全链路检查未通过',
     {
+      providerConfiguration: providerConfiguredForHarness ? 'passed' : 'failed',
       fastApi: fastApiState,
       harness: harnessState,
       durationMs: Date.now() - startedAtMs,
