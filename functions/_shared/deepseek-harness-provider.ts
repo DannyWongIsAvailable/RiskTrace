@@ -46,7 +46,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       CREATE_REQUEST_TIMEOUT_MS,
     )
 
-    return normalizeRunSnapshot(response)
+    return normalizeDeepSeekHarnessRunSnapshot(response)
   }
 
   async getRun(executeId: string): Promise<ProviderRunSnapshot> {
@@ -56,7 +56,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       undefined,
       STATUS_REQUEST_TIMEOUT_MS,
     )
-    return normalizeRunSnapshot(response)
+    return normalizeDeepSeekHarnessRunSnapshot(response)
   }
 
   private async requestJson(
@@ -130,7 +130,9 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
   }
 }
 
-function normalizeRunSnapshot(record: Record<string, unknown>): ProviderRunSnapshot {
+export function normalizeDeepSeekHarnessRunSnapshot(
+  record: Record<string, unknown>,
+): ProviderRunSnapshot {
   const executeId = readRunId(record)
   const status = readString(record.status)?.toLowerCase()
   const providerMessage =
