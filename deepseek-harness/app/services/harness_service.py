@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
+from uuid import uuid4
 
 from deepseek_harness import DeepSeekHarness
 
@@ -40,6 +41,7 @@ class HarnessExecutionError(RuntimeError):
     last_turn_end: dict[str, Any] | None = None,
     event_summary: list[dict[str, Any]] | None = None,
     exception_type: str | None = None,
+    session_id: str | None = None,
   ) -> None:
     super().__init__(message)
     self.finish_reason = finish_reason
@@ -49,6 +51,7 @@ class HarnessExecutionError(RuntimeError):
     self.last_turn_end = last_turn_end
     self.event_summary = event_summary or []
     self.exception_type = exception_type
+    self.session_id = session_id
 
   def to_api_error(self) -> dict[str, Any]:
     error: dict[str, Any] = {
@@ -63,6 +66,7 @@ class HarnessExecutionError(RuntimeError):
 
   def to_harness_diagnostics(self) -> dict[str, Any]:
     return {
+      "sessionId": self.session_id,
       "finishReason": self.finish_reason,
       "eventCount": self.event_count,
       "lastTurnEnd": self.last_turn_end,
@@ -770,6 +774,22 @@ def _normalize_finish_reason(value: Any) -> str | None:
   return normalized or None
 
 
+def _new_harness_session_id(prefix: str) -> str:
+  """Create a fresh native Harness session for one independent execution.
+
+  RiskTrace review/check IDs are business identifiers and may be reused across
+  retries or duplicate HTTP requests. DeepSeek Harness persisted session IDs,
+  however, must be fresh for independent tasks when a new runtime process is
+  created; otherwise an existing JSONL log can trigger an id-collision error.
+  """
+  safe_prefix = "".join(
+    char if char.isalnum() or char in {"-", "_"} else "-"
+    for char in str(prefix)
+  ).strip("-_")
+  safe_prefix = (safe_prefix or "risktrace")[:80]
+  return f"{safe_prefix}-{uuid4().hex}"
+
+
 def _safe_scalar(value: Any) -> str | int | float | bool | None:
   if isinstance(value, (str, int, float, bool)) or value is None:
     return value
@@ -788,11 +808,11 @@ def _sanitize_llm_failure(value: Any) -> dict[str, Any] | None:
 
   result: dict[str, Any] = {}
   for key in (
-    "message",
-    "code",
-    "status",
-    "providerRetryAfterMs",
-    "requestId",
+      "message",
+      "code",
+      "status",
+      "providerRetryAfterMs",
+      "requestId",
   ):
     scalar = _safe_scalar(value.get(key))
     if scalar is not None:
@@ -900,7 +920,9 @@ def _summarize_events(
 
 def _result_diagnostics(result: Any) -> dict[str, Any]:
   events = result.events if isinstance(result.events, list) else []
+  session_id = getattr(result, "session_id", None)
   return {
+    "sessionId": session_id if isinstance(session_id, str) else None,
     "finishReason": _normalize_finish_reason(result.finish_reason),
     "eventCount": len(events),
     "lastTurnEnd": _extract_last_turn_end(events),
@@ -948,6 +970,12 @@ def run_review_detailed(
   if settings.deepseek_api_key is not None:
     api_key = settings.deepseek_api_key.get_secret_value()
 
+  # A RiskTrace reviewRunId is a durable business identifier, not a native
+  # DeepSeek Harness session identifier. Each /runs execution creates a new
+  # runtime process, so reusing run_id as session_id can collide with the
+  # persisted JSONL session left by an earlier execution/retry.
+  harness_session_id = _new_harness_session_id(run_id)
+
   try:
     with DeepSeekHarness(
       provider=settings.harness_provider,
@@ -960,7 +988,7 @@ def run_review_detailed(
 
       result = harness.run(
         prompt,
-        session_id=run_id,
+        session_id=harness_session_id,
       )
   except Exception as exc:
     # Preserve the existing product behavior for explicitly recognized document
@@ -973,6 +1001,7 @@ def run_review_detailed(
         ),
         "finalResponse": "",
         "harness": {
+          "sessionId": harness_session_id,
           "finishReason": "degraded",
           "eventCount": 0,
           "lastTurnEnd": None,
@@ -991,6 +1020,7 @@ def run_review_detailed(
       last_turn_end=None,
       event_summary=[],
       exception_type=type(exc).__name__,
+      session_id=harness_session_id,
     ) from exc
 
   diagnostics = _result_diagnostics(result)
@@ -1007,6 +1037,7 @@ def run_review_detailed(
       event_count=diagnostics["eventCount"],
       last_turn_end=diagnostics["lastTurnEnd"],
       event_summary=diagnostics["eventSummary"],
+      session_id=diagnostics["sessionId"] or harness_session_id,
     )
 
   return {
@@ -1061,6 +1092,8 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
   if settings.deepseek_api_key is not None:
     api_key = settings.deepseek_api_key.get_secret_value()
 
+  diagnostic_session_id = _new_harness_session_id(f"diagnostic-{check_id}")
+
   log(
     "info",
     "准备启动 DeepSeek Harness SDK",
@@ -1070,6 +1103,7 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
       "sdkVersion": _harness_sdk_version(),
       "deepseekApiKeyConfigured": bool(api_key),
       "deepseekBaseUrlConfigured": bool(settings.deepseek_base_url),
+      "sessionId": diagnostic_session_id,
     },
   )
 
@@ -1086,7 +1120,7 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
       run_started_at = time.perf_counter()
       result = harness.run(
         "这是 RiskTrace Provider 连通性检查。请只回复 RISKTRACE_HARNESS_OK，不要添加其他内容。",
-        session_id=f"diagnostic-{check_id}",
+        session_id=diagnostic_session_id,
       )
       run_duration_ms = round((time.perf_counter() - run_started_at) * 1000)
 
@@ -1109,6 +1143,7 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
       "success" if ok else "error",
       "DeepSeek Harness 模型调用已返回" if ok else "DeepSeek Harness 模型调用未成功返回",
       {
+        "sessionId": diagnostics["sessionId"] or diagnostic_session_id,
         "finishReason": finish_reason,
         "runDurationMs": run_duration_ms,
         "responseLength": len(final_response),
@@ -1125,6 +1160,7 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
       "provider": settings.harness_provider,
       "model": settings.harness_model,
       "sdkVersion": _harness_sdk_version(),
+      "sessionId": diagnostics["sessionId"] or diagnostic_session_id,
       "finishReason": finish_reason,
       "response": response_preview,
       "finalResponse": final_response,
@@ -1150,6 +1186,7 @@ def run_harness_diagnostic(check_id: str) -> dict[str, Any]:
       "provider": settings.harness_provider,
       "model": settings.harness_model,
       "sdkVersion": _harness_sdk_version(),
+      "sessionId": diagnostic_session_id,
       "finishReason": "error",
       "response": "",
       "finalResponse": "",
