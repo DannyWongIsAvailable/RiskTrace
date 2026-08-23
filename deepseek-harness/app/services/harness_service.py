@@ -99,33 +99,79 @@ category字段必须严格从以下枚举中选择：
     "limitations": []
   }}
 }}
+重要降级规则：
+
+如果无法调用 MinerU 或任何文档解析工具：
+
+1. 不允许输出自然语言说明。
+2. 必须仍然输出完整 JSON。
+3. 在 findings 中增加 system 类型风险。
+
+格式：
+
+{
+    "overallRiskLevel":"uncertain",
+ "summary":"无法完成材料解析",
+ "findings":[
+   {
+    "domain":"document-processing",
+    "title":"MinerU解析服务不可用",
+    "riskLevel":"medium",
+    "description":"当前环境未检测到可用文档解析工具，因此无法读取上传材料。",
+    "recommendation":"部署MinerU服务或配置文档解析插件后重新执行审查。",
+    "relatedDocuments":[]
+   }
+ ],
+ "completeness":{
+    "result":"uncertain",
+    "reason":"缺少文档解析能力"
+ }
+}
+
+禁止输出 Markdown。
+禁止输出解释文字。
+禁止输出代码块。
 """.strip()
 
 
-def parse_output(text: str) -> dict[str, Any]:
-    text = text.strip()
+def parse_output(text: str) -> dict:
+  text = text.strip()
 
-    # 防止模型偶尔仍然套 Markdown
-    if text.startswith("```json"):
-        text = text[7:].strip()
-    elif text.startswith("```"):
-        text = text[3:].strip()
+  try:
+    return json.loads(text)
 
-    if text.endswith("```"):
-        text = text[:-3].strip()
+  except Exception:
 
-    result = json.loads(text)
+    return {
+      "overallRiskLevel": "uncertain",
 
-    if not isinstance(result, dict):
-        raise ValueError("Harness 返回值不是 JSON object")
+      "summary": (
+        "审查未完成结构化分析。"
+        "模型返回内容无法解析为标准 JSON。"
+      ),
 
-    if "materialAnalysis" not in result:
-        raise ValueError("Harness 返回值缺少 materialAnalysis")
+      "findings": [
+        {
+          "domain": "system",
+          "title": "文档解析能力不可用",
+          "riskLevel": "medium",
+          "description": text[:1000],
+          "recommendation": (
+            "请检查 MinerU 文档解析服务是否可用，"
+            "或重新上传可解析文件。"
+          ),
+          "relatedDocuments": []
+        }
+      ],
 
-    if "finalReport" not in result:
-        raise ValueError("Harness 返回值缺少 finalReport")
-
-    return result
+      "completeness": {
+        "result": "uncertain",
+        "reason": (
+          "无法完成完整材料解析，"
+          "原因是模型输出无法转换为结构化结果。"
+        )
+      }
+    }
 
 
 def run_review(
