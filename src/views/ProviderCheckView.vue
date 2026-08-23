@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 
 import { runProviderCheck } from '@/api/modules'
 import { isApiError } from '@/api/request'
@@ -146,7 +146,6 @@ async function copyLogs(): Promise<void> {
   }
 }
 
-onMounted(() => void executeCheck())
 onBeforeUnmount(() => controller?.abort())
 </script>
 
@@ -158,11 +157,12 @@ onBeforeUnmount(() => controller?.abort())
     >
       <template #actions>
         <el-button
-          :icon="AppIcons.action.refresh"
+          :icon="result ? AppIcons.action.refresh : undefined"
+          type="primary"
           :loading="loading"
           @click="executeCheck"
         >
-          重新检查
+          {{ result ? '重新检查' : '开始检查' }}
         </el-button>
         <el-button :disabled="!result" @click="copyLogs">复制日志</el-button>
       </template>
@@ -236,7 +236,7 @@ onBeforeUnmount(() => controller?.abort())
         正在等待同步检查结果…
       </div>
       <div v-else-if="!result?.logs.length" class="provider-check__empty-log">
-        暂无日志。点击“重新检查”开始诊断。
+        暂无日志。点击“开始检查”启动 Provider 诊断。
       </div>
       <div v-else class="provider-check__logs">
         <article
