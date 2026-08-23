@@ -90,11 +90,11 @@ export interface UploadSession {
 export interface CompleteUploadsResult {
   projectId: string
   reviewRunId: string
-  status: 'reviewing' | 'completed'
-  stage: Exclude<ProjectStage, 'waiting_for_upload' | 'uploading_files' | 'failed'>
+  status: 'completed' | 'failed'
+  stage: 'report_completed' | 'failed'
   materialAnalysisUrl: string
-  pollUrl: string
   reportUrl: string
+  error: { code: string; message: string } | null
 }
 
 export interface MaterialAnalysis {
@@ -113,22 +113,6 @@ export interface MaterialAnalysis {
     result: CompletenessResult
     summary: string
     missingMaterials: string[]
-  }
-}
-
-export interface ReviewStatusResult {
-  projectId: string
-  reviewRunId: string
-  status: 'reviewing' | 'completed' | 'failed'
-  stage: Exclude<ProjectStage, 'waiting_for_upload' | 'uploading_files'>
-  progress: number
-  message: string
-  materialAnalysisAvailable: boolean
-  reportAvailable: boolean
-  error?: {
-    code: string
-    message: string
-    retryable: boolean
   }
 }
 

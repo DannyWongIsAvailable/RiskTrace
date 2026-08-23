@@ -9,7 +9,7 @@ export const onRequestGet: PagesFunction<Env, 'projectId', RequestData> = async 
   data,
 }) => {
   const projectId = getPathParam(params, 'projectId')
-  const review = await getReviewStatus(env, projectId, true)
+  const review = await getReviewStatus(env, projectId)
 
   return success(review, { requestId: data.requestId })
 }

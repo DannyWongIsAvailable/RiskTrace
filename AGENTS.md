@@ -13,9 +13,9 @@ RiskTrace 当前是一套面向企业采购项目的智能合规审查 Demo。�
 项目标题
 → 全部材料上传
 → 创建一个审查运行
-→ 通过 Review Provider 启动一次完整执行
-→ 同一 Provider 执行完成材料理解、领域审查和报告聚合
-→ 通过 executeId 查询工作流最终输出
+→ 通过 Review Provider 启动一次完整同步执行
+→ 页面与 Pages Functions 保持当前请求，等待同一 Provider 调用完成材料理解、领域审查和报告聚合
+→ Provider 在同一个 createRun 响应中返回终态与最终输出
 → 一次性校验并保存材料理解结果和最终报告
 ```
 
@@ -69,12 +69,12 @@ Pages Functions 负责：
 - 项目、文件、审查运行和结果 API；
 - R2 上传签名、上传确认和短时读取 URL；
 - 通过 Provider 启动一次贯通全流程的审查执行；
-- 为一个审查运行维护一个当前有效的 Provider `executeId`；
-- 使用本次运行持久化的 `provider_name` 与 `provider_execute_id` 同步业务阶段；
+- 一个审查尝试只允许一次同步 Provider `createRun` 调用；
+- `provider_name` 与 `provider_execute_id` 仅用于记录本次 Provider 和调用追踪 ID，不用于状态轮询；
 - 在 Provider 成功后一次取得最终输出，并分别校验、幂等保存材料理解结果和最终报告；
 - D1 持久化、错误映射、重试边界和结构化日志。
 
-Pages Functions 不得把材料理解和领域审查拆成两个独立 Provider 执行，也不得因阶段切换创建第二个 `executeId`。外部工作流不得通过回调主动写正式结果；RiskTrace 只通过当前 `executeId` 查询成功后的最终输出。切换默认 Provider 不得影响已经启动的审查运行。
+Pages Functions 不得把材料理解和领域审查拆成两个独立 Provider 执行，也不得在一次审查尝试中启动第二个 Provider 调用。外部工作流不得通过回调主动写正式结果；当前阶段只接受同步 `createRun` 在同一响应中返回终态最终输出，不实现 Provider 轮询。
 
 
 ## 4. 编码前上下文扫描
@@ -88,10 +88,11 @@ Pages Functions 不得把材料理解和领域审查拆成两个独立 Provider 
 5. 阅读 `docs/ICON_SYSTEM.md`；
 6. 涉及接口时阅读 `docs/API_CONVENTIONS.md`；
 7. 涉及错误和日志时阅读 `docs/ERROR_HANDLING_AND_OBSERVABILITY.md`；
-8. 检查目标路由、相邻页面、相关组件、API、Store、类型和静态资源；
-9. 搜索已有基础组件、设计令牌和图标映射；
-10. 明确加载、成功、空数据、错误和权限受限状态；
-11. 明确该功能位于主链路的哪个阶段，输入和输出分别是什么。
+8. 当前同步 Review Provider 的实现与接口口径以 `docs/REVIEW_PROVIDER.md` 为准；若其他历史设计文档仍描述异步轮询，当前阶段不得据此恢复轮询逻辑；
+9. 检查目标路由、相邻页面、相关组件、API、Store、类型和静态资源；
+10. 搜索已有基础组件、设计令牌和图标映射；
+11. 明确加载、成功、空数据、错误和权限受限状态；
+12. 明确该功能位于主链路的哪个阶段，输入和输出分别是什么。
 
 禁止只根据一句提示直接生成页面，而不读取仓库上下文。
 
@@ -438,7 +439,7 @@ AI 生成代码时禁止：
 - API 类型、错误和请求编号是否完整；
 - 页面是否覆盖加载、空数据、错误和降级状态；
 - 是否只启动一条从材料理解贯通到报告聚合的工作流；
-- 是否只维护一个当前有效的 Provider `executeId`；
+- 是否每个审查尝试只执行一次同步 Provider `createRun`，且没有 Provider 轮询；
 - Provider 成功输出是否同时包含材料理解结果和最终报告，并在完整校验后分别幂等保存；
 - 风险事项引用的 `documentId` 是否属于当前项目；
 - 项目标题、文件名、R2 Key 和系统状态是否由后端控制；

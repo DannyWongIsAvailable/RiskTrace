@@ -10,11 +10,11 @@ const REQUEST_TIMEOUT_MS = 300_000
 const CONTRACT_VERSION = 'risktrace.review.v1'
 
 /**
- * Adapter for a DeepSeek-powered agent harness.
+ * Synchronous adapter for the DeepSeek Harness gateway.
  *
- * A harness is intentionally treated as a separate runtime rather than as the raw DeepSeek model
- * API. The runtime only needs to expose the small HTTP contract implemented below; its internal
- * agent/tool orchestration can change without affecting RiskTrace APIs or review orchestration.
+ * POST /runs must wait for Harness/model completion and return a terminal status in the same HTTP
+ * response. RiskTrace deliberately does not call GET /runs/{id} or a cancel endpoint in the current
+ * synchronous phase.
  */
 export class DeepSeekHarnessReviewProvider implements ReviewProvider {
   readonly name = 'deepseek-harness' as const
@@ -31,7 +31,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
   }
 
   async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
-    const response = await this.request('POST', '/runs', {
+    const response = await this.request({
       contract: CONTRACT_VERSION,
       idempotencyKey: input.reviewRunId,
       project: {
@@ -47,40 +47,25 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       throw new AppError('WORKFLOW_START_FAILED', '合规审查服务未返回运行编号', 502)
     }
 
-    const initialResult = normalizeRunResult(response)
     return {
       executeId,
-      ...(initialResult.state === 'running' ? {} : { initialResult }),
+      result: normalizeTerminalRunResult(response),
     }
   }
 
-  async getRun(executeId: string): Promise<ProviderRunResult> {
-    const response = await this.request('GET', `/runs/${encodeURIComponent(executeId)}`)
-    return normalizeRunResult(response)
-  }
-
-  async cancelRun(executeId: string): Promise<void> {
-    await this.request('POST', `/runs/${encodeURIComponent(executeId)}/cancel`, undefined, true)
-  }
-
-  private async request(
-    method: 'GET' | 'POST',
-    path: string,
-    body?: Record<string, unknown>,
-    allowEmptyResponse = false,
-  ): Promise<Record<string, unknown>> {
+  private async request(body: Record<string, unknown>): Promise<Record<string, unknown>> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
     try {
-      const response = await fetch(`${this.baseUrl}${path}`, {
-        method,
+      const response = await fetch(`${this.baseUrl}/runs`, {
+        method: 'POST',
         headers: {
           Accept: 'application/json',
-          ...(body ? { 'Content-Type': 'application/json' } : {}),
+          'Content-Type': 'application/json',
           ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
         },
-        ...(body ? { body: JSON.stringify(body) } : {}),
+        body: JSON.stringify(body),
         signal: controller.signal,
       })
 
@@ -90,9 +75,6 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
 
       const responseText = await response.text()
       if (!responseText.trim()) {
-        if (allowEmptyResponse) {
-          return {}
-        }
         throw new AppError(
           'WORKFLOW_PROVIDER_INVALID_RESPONSE',
           '合规审查服务响应格式无效',
@@ -110,6 +92,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
           502,
         )
       }
+
       const record = readObject(value)
       if (!record) {
         throw new AppError(
@@ -133,17 +116,28 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
   }
 }
 
-function normalizeRunResult(record: Record<string, unknown>): ProviderRunResult {
-  const status = readString(record.status)?.toLowerCase() ?? 'running'
+function normalizeTerminalRunResult(record: Record<string, unknown>): ProviderRunResult {
+  const status = readString(record.status)?.toLowerCase()
   const providerMessage =
     readString(record.message) ?? readString(readObject(record.error)?.message) ?? undefined
   const output = record.output ?? record.result ?? readObject(record.data)?.output
   const content = stringifyProviderContent(output)
 
+  if (!status) {
+    throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', '合规审查服务未返回运行状态', 502)
+  }
+
   if (['queued', 'pending', 'starting', 'running', 'in_progress'].includes(status)) {
-    return { state: 'running', ...(content ? { content } : {}) }
+    throw new AppError(
+      'WORKFLOW_PROVIDER_INVALID_RESPONSE',
+      '合规审查服务返回了非终态结果；当前 RiskTrace 仅支持同步审查',
+      502,
+    )
   }
   if (['success', 'succeeded', 'completed', 'complete'].includes(status)) {
+    if (!content) {
+      throw new AppError('WORKFLOW_OUTPUT_INVALID', '合规审查服务已完成但未返回审查结果', 502)
+    }
     return { state: 'succeeded', content, providerMessage }
   }
   if (['interrupt', 'interrupted', 'requires_action'].includes(status)) {

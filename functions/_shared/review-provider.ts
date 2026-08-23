@@ -18,26 +18,26 @@ export interface CreateReviewRunInput {
 }
 
 export interface ProviderRunResult {
-  state: 'running' | 'succeeded' | 'interrupted' | 'failed'
+  state: 'succeeded' | 'interrupted' | 'failed'
   /** Provider-neutral final output. A succeeded run must return materialAnalysis + finalReport. */
   content?: string
   providerMessage?: string
 }
 
 export interface ProviderRun {
+  /** Provider-side request/run identifier kept only for tracing; RiskTrace never polls it. */
   executeId: string
-  initialResult?: ProviderRunResult
+  /** Synchronous terminal result returned by the same createRun request. */
+  result: ProviderRunResult
 }
 
 /**
- * Stable boundary between RiskTrace review orchestration and any review execution runtime.
+ * Stable synchronous boundary between RiskTrace review orchestration and any review runtime.
  *
- * Concrete implementations own provider selection details, authentication, request envelopes,
- * endpoint paths and response normalization. Business orchestration only depends on this contract.
+ * createRun() must not return until the provider has reached a terminal state. RiskTrace does not
+ * poll provider run status and does not expose provider-specific asynchronous lifecycle methods.
  */
 export interface ReviewProvider {
   readonly name: ReviewProviderName
   createRun(input: CreateReviewRunInput): Promise<ProviderRun>
-  getRun(executeId: string): Promise<ProviderRunResult>
-  cancelRun(executeId: string): Promise<void>
 }

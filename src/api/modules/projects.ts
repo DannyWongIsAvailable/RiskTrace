@@ -11,7 +11,6 @@ import type {
   ProjectListData,
   ProjectSummary,
   ReviewReport,
-  ReviewStatusResult,
   UploadSession,
   UploadSessionFile,
 } from '@/types/project'
@@ -99,7 +98,7 @@ export function completeProjectUploads(
     undefined,
     {
       signal,
-      // 星辰同步 Workflow 后端最长等待 300 秒，这里额外预留 30 秒网络/落库余量。
+      // 同步 Provider 后端最长等待 300 秒，这里额外预留 30 秒网络/落库余量。
       timeoutMs: COMPLETE_UPLOADS_REVIEW_TIMEOUT_MS,
     },
   )
@@ -110,13 +109,6 @@ export function getProjectMaterialAnalysis(
   signal?: AbortSignal,
 ): Promise<MaterialAnalysis> {
   return http.get<MaterialAnalysis>(`/api/projects/${projectId}/material-analysis`, { signal })
-}
-
-export function getProjectReviewStatus(
-  projectId: string,
-  signal?: AbortSignal,
-): Promise<ReviewStatusResult> {
-  return http.get<ReviewStatusResult>(`/api/projects/${projectId}/review`, { signal })
 }
 
 export function getProjectReport(

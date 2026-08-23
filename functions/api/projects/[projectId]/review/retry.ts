@@ -9,9 +9,7 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
   data,
 }) => {
   const projectId = getPathParam(params, 'projectId')
-  const run = await retryProjectReview(env, {
-    projectId,
-  })
+  const run = await retryProjectReview(env, { projectId })
 
   return success(
     {
@@ -20,11 +18,14 @@ export const onRequestPost: PagesFunction<Env, 'projectId', RequestData> = async
       status: run.status,
       stage: run.stage,
       attemptCount: run.attempt_count,
-      pollUrl: `/api/projects/${projectId}/review`,
+      error:
+        run.status === 'failed' && run.error_code && run.error_message
+          ? { code: run.error_code, message: run.error_message }
+          : null,
     },
     {
-      status: 202,
-      message: '完整合规审查工作流已重新启动',
+      status: 200,
+      message: run.status === 'completed' ? '完整合规审查已重新执行完成' : '合规审查重试失败',
       requestId: data.requestId,
     },
   )

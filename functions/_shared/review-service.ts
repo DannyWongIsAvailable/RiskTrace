@@ -21,7 +21,7 @@ import {
   requireReviewRunByProject,
   updateReviewState,
 } from './review-repository'
-import { createConfiguredReviewProvider, createReviewProvider } from './review-provider-factory'
+import { createConfiguredReviewProvider } from './review-provider-factory'
 import type { ProviderRunResult, ReviewProvider } from './review-provider'
 import {
   normalizeMaterialAnalysis,
@@ -47,16 +47,19 @@ export async function startProjectReview(
     now,
   })
 
-  if (run.status === 'completed' || run.provider_execute_id || run.provider_status === 'starting') {
+  if (run.status === 'completed') {
     return run
   }
   if (run.status === 'failed') {
     throw new AppError('REVIEW_RETRY_REQUIRED', '合规审查已失败，请使用重试接口', 409)
   }
+  if (run.provider_status === 'starting' || run.provider_execute_id) {
+    throw new AppError('REVIEW_ALREADY_RUNNING', '同步合规审查请求正在执行，请等待当前请求返回', 409)
+  }
 
   const claimed = await claimReviewRunStart(env.risktrace_db, run.id, provider.name, now)
   if (!claimed) {
-    return requireReviewRunByProject(env.risktrace_db, input.projectId)
+    throw new AppError('REVIEW_ALREADY_RUNNING', '同步合规审查请求正在执行，请等待当前请求返回', 409)
   }
 
   try {
@@ -124,29 +127,11 @@ export async function retryProjectReview(
   }
 }
 
-export async function synchronizeProjectReview(env: Env, projectId: string): Promise<ReviewRunRow> {
-  const run = await requireReviewRunByProject(env.risktrace_db, projectId)
-  if (run.status !== 'reviewing' || !run.provider_execute_id) {
-    return run
-  }
-
-  const provider = createReviewProvider(env, run.provider_name)
-  const providerResult = await provider.getRun(run.provider_execute_id)
-  await applyProviderRunResult(env, run, providerResult)
-
-  return requireReviewRunByProject(env.risktrace_db, projectId)
-}
-
 export async function getReviewStatus(
   env: Env,
   projectId: string,
-  synchronize = true,
 ): Promise<ReviewStatusResponse> {
-  let run = await requireReviewRunByProject(env.risktrace_db, projectId)
-
-  if (synchronize) {
-    run = await synchronizeProjectReview(env, projectId)
-  }
+  const run = await requireReviewRunByProject(env.risktrace_db, projectId)
 
   const [materialAnalysisAvailable, reportAvailable] = await Promise.all([
     reviewResultExists(env.risktrace_db, run.id, 'material_analysis'),
@@ -187,32 +172,24 @@ async function createProviderRun(
   documents: Awaited<ReturnType<typeof listDocuments>>,
 ): Promise<ReviewRunRow> {
   const files = await createReviewProviderFileList(env, documents)
+
+  // Current phase is strictly synchronous: createRun does not return until the Provider has
+  // reached a terminal state. executeId is kept only as an audit/trace identifier.
   const providerRun = await provider.createRun({
     projectId: project.id,
     reviewRunId,
     projectTitle: project.title,
     files,
   })
-  const now = new Date().toISOString()
-  try {
-    await attachProviderExecuteId(env.risktrace_db, {
-      reviewRunId,
-      executeId: providerRun.executeId,
-      now,
-    })
-  } catch (error) {
-    try {
-      await provider.cancelRun(providerRun.executeId)
-    } catch {
-      // The current run is already being failed by the caller; cancellation is best effort.
-    }
-    throw error
-  }
+
+  await attachProviderExecuteId(env.risktrace_db, {
+    reviewRunId,
+    executeId: providerRun.executeId,
+    now: new Date().toISOString(),
+  })
 
   const attachedRun = await requireReviewRunById(env.risktrace_db, reviewRunId)
-  if (providerRun.initialResult) {
-    await applyProviderRunResult(env, attachedRun, providerRun.initialResult)
-  }
+  await applyProviderRunResult(env, attachedRun, providerRun.result)
 
   return requireReviewRunById(env.risktrace_db, reviewRunId)
 }
@@ -242,22 +219,6 @@ async function applyProviderRunResult(
         ? `合规审查执行失败：${providerResult.providerMessage}`
         : '合规审查执行失败',
     })
-    return
-  }
-
-  if (providerResult.state === 'running') {
-    const currentRun = await requireReviewRunById(env.risktrace_db, run.id)
-    if (currentRun.status === 'reviewing' && currentRun.provider_status !== 'running') {
-      await updateReviewState(env.risktrace_db, {
-        reviewRunId: currentRun.id,
-        projectId: currentRun.project_id,
-        status: 'reviewing',
-        stage: 'domain_review_running',
-        providerStatus: 'running',
-        progress: 60,
-        now: new Date().toISOString(),
-      })
-    }
     return
   }
 

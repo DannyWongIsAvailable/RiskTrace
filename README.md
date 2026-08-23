@@ -21,7 +21,7 @@ Provider 适配、环境变量和 DeepSeek Harness HTTP 契约见 `docs/REVIEW_P
 → 上传批次完成后创建一个审查运行
 → 通过 ReviewProvider 启动一次完整审查执行
 → 同一 Provider 执行完成材料理解、自动分类、领域审查和报告聚合
-→ RiskTrace 持续使用同一个 executeId 查询执行状态
+→ 页面保持同步请求并等待同一次 Provider 调用返回终态
 → Provider 成功后一次性返回 materialAnalysis + finalReport
 → API 先完整校验两部分结果，再分别保存 D1
 → 前端通过 RiskTrace API 展示整体执行状态、材料分类和最终报告
@@ -60,7 +60,7 @@ Provider 适配、环境变量和 DeepSeek Harness HTTP 契约见 `docs/REVIEW_P
 |---|---|---|
 | 顶层业务对象 | 采购项目 | `project` / `Project` / `projectId` |
 | 一次自动化审查过程 | 合规审查 | `review` / `reviewRun` / `reviewRunId` |
-| Provider 单次执行 | 工作流执行 | `providerExecuteId` / `executeId` |
+| Provider 单次执行 | 同步工作流调用 | `providerExecuteId` / `executeId`（仅追踪） |
 | 材料理解中间输出 | 材料理解结果 | `materialAnalysis` |
 | 最终检出结果 | 风险事项 | `riskFinding` / `RiskFinding` / `findingId` |
 | 最终聚合输出 | 合规审查报告 | `reviewReport` / `ReviewReport` |
@@ -82,7 +82,7 @@ Cloudflare Pages Functions
                     材料理解 → 路由 Agent → 领域 Agent → 聚合 Agent
 ```
 
-Pages Functions 负责项目创建、上传编排、R2 短时访问、Provider 启动、同一 `executeId` 的状态同步、模型结果校验、幂等保存和稳定 API 输出。前端不得直接访问 D1、R2 或任何外部模型/工作流平台。
+Pages Functions 负责项目创建、上传编排、R2 短时访问、同步 Provider 调用、模型结果校验、幂等保存和稳定 API 输出。前端在 `/uploads/complete` 请求中直接等待最终结果，不轮询 Provider。前端不得直接访问 D1、R2 或任何外部模型/工作流平台。
 
 ## 5. 技术栈
 
@@ -113,8 +113,8 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、Provider �
 - 业务层只依赖统一 `ReviewProvider` 接口；
 - `REVIEW_PROVIDER=mock|xingchen|deepseek-harness` 选择实现；
 - 讯飞星辰 Provider 负责星辰专有认证、参数名和 Workflow API；
-- DeepSeek Harness Provider 负责 Harness HTTP 契约和运行状态归一化；
-- 一次审查运行持久化 `provider_name + provider_execute_id`，运行中的任务不会因默认 Provider 切换而串到另一平台；
+- DeepSeek Harness Provider 负责 Harness 同步 HTTP 契约和终态结果归一化；
+- 一次审查运行持久化 `provider_name + provider_execute_id`；其中 `provider_execute_id` 仅作为同步调用追踪 ID，不用于状态轮询；
 - 材料理解结果和最终报告由同一次 Provider 执行在成功终态一次性返回。
 - 前端和业务 API 只暴露材料理解、审查阶段和报告等业务语义，不暴露或判断具体 Provider。
 
@@ -125,13 +125,13 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、Provider �
 | `/dashboard` | 审查总览 | 展示项目状态、审查进度、报告与风险事项统计 |
 | `/projects` | 采购项目列表 | 查询项目和进入新建流程 |
 | `/projects/new` | 新建采购项目 | 填写项目标题并一次性上传材料 |
-| `/projects/:projectId/upload` | 项目材料与审查进度 | 上传材料、轮询工作流状态，并在完成后展示材料理解结果 |
+| `/projects/:projectId/upload` | 项目材料与审查进度 | 上传材料、等待同步审查 API 返回，并在完成后展示材料理解结果 |
 | `/projects/:projectId/report` | 合规审查报告 | 展示只读风险报告和关联文件 |
 | `/foundation` | 设计系统 | 仅开发环境使用的基础组件预览 |
 
 处置中心和规则中心不属于当前 Demo 范围，不应作为当前版本的业务导航或开发目标。
 
-当前仓库已经完成前端工程底座、审查总览与采购项目四个主流程页面、项目/上传/统计 API、D1/R2 读写、统一 Review Provider、异步结果查询、结果校验和报告读取。
+当前仓库已经完成前端工程底座、审查总览与采购项目四个主流程页面、项目/上传/统计 API、D1/R2 读写、统一同步 Review Provider、结果校验和报告读取。
 
 ## 7. 目录约定
 
@@ -242,7 +242,7 @@ pnpm cf:deploy
 
 - 顶层业务对象统一使用“采购项目”和 `project` 命名；
 - 一个审查运行只启动一次从材料理解贯通到报告聚合的 Provider 执行；
-- 不得为材料理解和领域审查分别创建两个 Provider 执行或两个 `executeId`；
+- 不得为材料理解和领域审查分别创建两个 Provider 调用；一次 `/uploads/complete` 只允许一次完整同步 Provider 执行；
 - Provider 成功后必须一次性返回材料理解结果和最终报告，两部分完整校验后再分别幂等保存；
 - Vue 组件和 Pinia Store 不得直接调用 `fetch`；
 - 浏览器请求统一经过 `src/api/request.ts` 与 `src/api/modules/`；

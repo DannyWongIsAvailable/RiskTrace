@@ -1,23 +1,30 @@
 # RiskTrace Review Provider 接入规范
 
-## 1. 目标
+## 1. 当前阶段目标：统一同步审查
 
-RiskTrace 对外 REST API、前端调用和结果 Schema 不感知底层审查执行平台。后端业务编排只依赖：
-
-```text
-functions/_shared/review-provider.ts
-```
-
-具体平台通过 Provider 实现接入：
+RiskTrace 当前阶段明确采用**同步 Review Provider**：
 
 ```text
-ReviewProvider
-├─ MockReviewProvider
-├─ XingchenReviewProvider
-└─ DeepSeekHarnessReviewProvider
+页面上传并确认全部材料
+→ POST /api/projects/:projectId/uploads/complete
+→ Pages Functions 调用一次 ReviewProvider.createRun()
+→ Provider 在同一个 HTTP 请求内完成材料理解、领域审查和报告聚合
+→ Provider 返回终态 succeeded / failed / interrupted
+→ RiskTrace 校验并落库 materialAnalysis + finalReport
+→ /uploads/complete 返回 completed / failed
+→ 页面继续展示最终结果
 ```
 
-所有 Provider 都遵循同一原则：**一次审查只启动一个执行实例，工作流内部完成全部分析，RiskTrace 只通过运行结果查询取得最终输出，不使用工作流回调。**
+当前阶段不实现：
+
+- Provider 状态轮询；
+- `getRun(executeId)`；
+- `cancelRun(executeId)`；
+- 前端定时请求 `/review` 等待 Provider 变化；
+- DeepSeek Harness `GET /runs/{id}`；
+- 外部工作流回调。
+
+`GET /api/projects/:projectId/review` 仅查询 RiskTrace D1 中已经持久化的审查状态，不访问任何 Provider。
 
 ## 2. Provider 选择
 
@@ -39,7 +46,7 @@ deepseek_harness -> deepseek-harness
 
 默认值为 `mock`。
 
-## 3. 稳定业务接口
+## 3. 稳定同步接口
 
 `ReviewProvider` 接收统一输入：
 
@@ -58,28 +65,32 @@ interface CreateReviewRunInput {
 }
 ```
 
-Provider 必须实现：
+Provider 只实现：
 
 ```ts
-createRun(input)
-getRun(executeId)
-cancelRun(executeId)
+createRun(input): Promise<ProviderRun>
 ```
 
-并将平台状态归一化为：
+返回：
 
-```text
-running
-succeeded
-interrupted
-failed
+```ts
+interface ProviderRun {
+  executeId: string
+  result: {
+    state: 'succeeded' | 'interrupted' | 'failed'
+    content?: string
+    providerMessage?: string
+  }
+}
 ```
 
-业务层不允许构造供应商专有参数名、鉴权头或 endpoint。
+`executeId` 在当前同步阶段只作为 Provider 调用追踪 ID 保存，不用于后续状态查询。
+
+Provider 不允许返回 `running`。如果外部服务只返回 queued/running 等非终态，适配器必须将其视为当前同步契约不支持的响应，而不是要求 RiskTrace 开始轮询。
 
 ### 3.1 最终输出契约
 
-当 Provider 返回 `succeeded` 时，`content` 必须能解析为同时包含以下两个字段的 JSON：
+当 Provider 返回 `succeeded` 时，`content` 必须能解析为同时包含以下字段的 JSON：
 
 ```json
 {
@@ -88,29 +99,25 @@ failed
 }
 ```
 
-RiskTrace 会先同时校验两部分，再保存正式结果；任一部分缺失或不符合 Schema，整个审查按 `WORKFLOW_OUTPUT_INVALID` 失败，不保存半成品结果。
+RiskTrace 会先完整校验两部分，再保存正式结果；任一部分缺失或不符合 Schema，整个审查按 `WORKFLOW_OUTPUT_INVALID` 失败，不保存半成品结果。
 
-Provider 处于 `running` 时，即使第三方平台暴露部分输出，RiskTrace 也不会把它写入正式结果。
+## 4. 数据库存储
 
-## 4. 运行时 Provider 绑定
+现有 `review_runs.provider_execute_id` 字段暂时保留，避免为了同步切换增加数据库迁移。
 
-一次运行启动时保存：
-
-```text
-provider_name + provider_execute_id
-```
-
-后续 `GET /api/projects/:projectId/review` 会根据运行中持久化的 `provider_name` 创建对应 Provider，并使用同一个 `provider_execute_id` 查询执行状态。切换默认 Provider 不会影响已经启动的运行。
-
-失败后显式重试会清空旧 Provider 绑定，并使用重试时的 `REVIEW_PROVIDER` 重新启动同一条完整审查链路。
-
-部署前仍需应用：
+当前语义为：
 
 ```text
-migrations/0002_review_provider.sql
+provider_name       = 本次同步调用使用的 Provider
+provider_execute_id = Provider 返回的请求/运行追踪 ID，仅用于审计与定位
+provider_status     = pending / starting / success / failed / interrupt
 ```
 
-## 5. 讯飞星辰配置
+新的同步主链不会把 `provider_status` 切换为 `running`，也不会根据 `provider_execute_id` 查询 Provider。
+
+失败后显式重试会清空旧 Provider 绑定，然后重新执行一次完整同步调用。
+
+## 5. 讯飞星辰同步配置
 
 ```text
 REVIEW_PROVIDER=xingchen
@@ -120,11 +127,14 @@ XFYUN_API_SECRET=...
 XFYUN_FLOW_ID_REVIEW=...
 ```
 
-星辰专有字段全部封装在：
+RiskTrace 使用：
 
 ```text
-functions/_shared/xingchen-provider.ts
+POST /workflow/v1/chat/completions
+stream=false
 ```
+
+该请求必须在返回前完成整条 Workflow，并从 `choices[0].delta.content` 返回最终业务结果。
 
 工作流开始节点接收：
 
@@ -136,37 +146,6 @@ PROJECT_TITLE
 FILES_JSON
 ATTEMPT_NO
 ```
-
-RiskTrace 调用：
-
-```text
-POST /workflow/v1/async/chat/completions
-→ 保存 execute_id
-→ POST /workflow/v1/async/chat/result
-→ Running：归一化为 ProviderRunResult { state: 'running' }
-→ Success：严格读取 data.output.content 字符串
-→ 将 content 归一化为 ProviderRunResult { state: 'succeeded', content }
-→ review-service 再 JSON.parse(content) 并校验业务结果
-```
-
-星辰异步结果接口成功时的供应商响应 envelope 按以下结构处理：
-
-```json
-{
-  "code": 0,
-  "message": "Success",
-  "data": {
-    "status": "Success",
-    "output": {
-      "content": "{\"materialAnalysis\":{...},\"finalReport\":{...}}",
-      "reasoning_content": ""
-    },
-    "usage": {}
-  }
-}
-```
-
-`XingchenReviewProvider` 不把整个供应商响应交给业务层，也不假设 `data.output` 直接包含 RiskTrace 字段；它只负责读取 `data.status` 与 `data.output.content`，转换成统一的 `ProviderRunResult`。`content` 必须是字符串，空字符串、缺少 `data.output` 或非字符串 `content` 都按 Provider 执行失败处理。
 
 星辰 End 节点必须一次性输出：
 
@@ -187,9 +166,7 @@ POST /workflow/v1/async/chat/completions
 }
 ```
 
-工作流内部可以有任意数量的材料理解、领域 Agent 和聚合节点，但不要再配置 RiskTrace 材料分类回调或最终报告回调节点。
-
-## 6. DeepSeek Harness 配置
+## 6. DeepSeek Harness 同步配置
 
 ```text
 REVIEW_PROVIDER=deepseek-harness
@@ -199,7 +176,7 @@ DEEPSEEK_HARNESS_API_KEY=...
 
 `DEEPSEEK_HARNESS_API_KEY` 可为空；为空时不发送 `Authorization`。
 
-### 6.1 创建运行
+RiskTrace 只调用：
 
 ```http
 POST {DEEPSEEK_HARNESS_BASE_URL}/runs
@@ -222,7 +199,20 @@ Content-Type: application/json
 }
 ```
 
-创建响应的运行编号支持：
+FastAPI `/runs` 必须同步等待 Harness 完成，并在同一个响应中返回终态。例如：
+
+```json
+{
+  "runId": "review_xxx",
+  "status": "completed",
+  "output": {
+    "materialAnalysis": {},
+    "finalReport": {}
+  }
+}
+```
+
+运行编号兼容读取：
 
 ```text
 executeId
@@ -232,45 +222,44 @@ run_id
 id
 ```
 
-### 6.2 查询运行
-
-```http
-GET {DEEPSEEK_HARNESS_BASE_URL}/runs/{executeId}
-```
-
-推荐成功响应：
-
-```json
-{
-  "runId": "run_xxx",
-  "status": "completed",
-  "output": {
-    "materialAnalysis": {},
-    "finalReport": {}
-  }
-}
-```
-
-状态映射：
+终态映射：
 
 ```text
-queued / pending / starting / running / in_progress -> running
-success / succeeded / completed / complete          -> succeeded
-interrupt / interrupted / requires_action           -> interrupted
-failed / error / cancelled / canceled                -> failed
+success / succeeded / completed / complete -> succeeded
+interrupt / interrupted / requires_action  -> interrupted
+failed / error / cancelled / canceled      -> failed
 ```
 
-`output` 也可直接返回 JSON 字符串，最终仍由 `review-result-validation.ts` 校验。
+以下状态在当前同步契约中属于无效响应：
 
-### 6.3 取消运行
-
-```http
-POST {DEEPSEEK_HARNESS_BASE_URL}/runs/{executeId}/cancel
+```text
+queued / pending / starting / running / in_progress
 ```
 
-## 7. 结果保存原则
+RiskTrace 不调用：
 
-工作流成功后，RiskTrace 在一次同步处理中完成：
+```text
+GET  /runs/{id}
+POST /runs/{id}/cancel
+```
+
+## 7. 页面与 API 行为
+
+`POST /api/projects/:projectId/uploads/complete`：
+
+- HTTP 请求保持打开直到同步审查结束；
+- 正常完成后返回 HTTP 200 + `status=completed`；
+- Provider 返回业务失败终态时返回 HTTP 200 + `status=failed` 和结构化 `error`；
+- Provider 网络、超时、无效响应等基础设施异常仍按统一错误协议返回 4xx/5xx；
+- 响应中不再提供 `pollUrl`。
+
+前端在等待期间只展示本地“同步审查执行中”状态，不启动定时器，不请求 `/review`。
+
+`GET /api/projects/:projectId/review` 仅用于页面刷新、排障或显式读取已经持久化的审查状态。
+
+## 8. 结果保存原则
+
+同步 Provider 返回后，RiskTrace 在同一次服务端请求中完成：
 
 ```text
 读取最终 content
@@ -280,19 +269,16 @@ POST {DEEPSEEK_HARNESS_BASE_URL}/runs/{executeId}/cancel
 → 更新 project_documents 的材料分类/摘要
 → 保存 final_report
 → reviewRun/project 更新为 completed / report_completed
+→ 返回 /uploads/complete
 ```
 
-不再存在 `/internal/provider/callback` 或 `/internal/provider/xingchen-callback` 接口，也不再接受外部工作流主动写入审查结果。
+## 9. 新增 Provider
 
-## 8. 新增 Provider
-
-新增 Provider 时只需要：
+新增 Provider 时：
 
 1. 在 `review-provider.ts` 增加 Provider 名称；
-2. 新建一个实现 `ReviewProvider` 的适配器；
-3. 在 `review-provider-factory.ts` 注册实现；
-4. 如需新增持久化枚举值，增加 D1 migration；
-5. 保证 `succeeded` 最终输出同时包含 `materialAnalysis` 和 `finalReport`；
-6. 不修改业务 API、前端 API 模块或页面来适配供应商差异。
-
-供应商差异必须停留在 Provider 层。
+2. 新建一个实现 `ReviewProvider` 的同步适配器；
+3. 在 `review-provider-factory.ts` 注册；
+4. 保证 `createRun()` 返回终态；
+5. 保证成功输出同时包含 `materialAnalysis` 和 `finalReport`；
+6. 不在页面或业务服务中新增供应商专有轮询逻辑。

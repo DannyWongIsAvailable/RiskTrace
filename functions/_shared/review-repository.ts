@@ -94,14 +94,14 @@ export async function attachProviderExecuteId(
   const result = await db
     .prepare(
       `UPDATE review_runs
-       SET provider_execute_id = ?, provider_status = 'running', updated_at = ?
+       SET provider_execute_id = ?, updated_at = ?
        WHERE id = ? AND provider_status = 'starting'`,
     )
     .bind(input.executeId, input.now, input.reviewRunId)
     .run()
 
   if ((result.meta.changes ?? 0) !== 1) {
-    throw new AppError('CONFLICTING_STATE', '审查运行状态已变化，无法保存工作流执行编号', 409)
+    throw new AppError('CONFLICTING_STATE', '审查运行状态已变化，无法保存 Provider 调用追踪编号', 409)
   }
 }
 

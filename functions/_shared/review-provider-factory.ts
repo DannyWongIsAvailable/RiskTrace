@@ -5,7 +5,6 @@ import type { ReviewProvider, ReviewProviderName } from './review-provider'
 import { XingchenReviewProvider } from './xingchen-provider'
 
 const DEFAULT_REVIEW_PROVIDER: ReviewProviderName = 'mock'
-const LEGACY_REVIEW_PROVIDER: ReviewProviderName = 'xingchen'
 
 export function getConfiguredReviewProviderName(env: Env): ReviewProviderName {
   const raw = env.REVIEW_PROVIDER?.trim().toLowerCase()
@@ -23,21 +22,9 @@ export function getConfiguredReviewProviderName(env: Env): ReviewProviderName {
 }
 
 export function createConfiguredReviewProvider(env: Env): ReviewProvider {
-  return createReviewProvider(env, getConfiguredReviewProviderName(env))
-}
-
-/**
- * Resolve a provider persisted with a review run. Null is only possible for runs created before
- * provider_name was introduced, so the legacy default is isolated here rather than in business
- * orchestration.
- */
-export function createReviewProvider(
-  env: Env,
-  providerName: ReviewProviderName | null,
-): ReviewProvider {
-  switch (providerName ?? LEGACY_REVIEW_PROVIDER) {
+  switch (getConfiguredReviewProviderName(env)) {
     case 'mock':
-      return new MockReviewProvider(env)
+      return new MockReviewProvider()
     case 'xingchen':
       return new XingchenReviewProvider(env)
     case 'deepseek-harness':

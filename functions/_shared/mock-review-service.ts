@@ -4,16 +4,13 @@ import type {
   ReviewReport,
   RiskLevel,
 } from './domain'
-import { AppError } from './errors'
 import { createId } from './ids'
 import type {
   CreateReviewRunInput,
   ProviderRun,
-  ProviderRunResult,
   ReviewProvider,
   ReviewProviderFile,
 } from './review-provider'
-import { findReviewResult } from './result-repository'
 
 const CATEGORY_MISSING_LABELS: Partial<Record<MaterialCategory, string>> = {
   '采购立项与审批': '采购申请或预算审批材料',
@@ -44,15 +41,13 @@ const CATEGORY_PATTERNS: Array<{
 export class MockReviewProvider implements ReviewProvider {
   readonly name = 'mock' as const
 
-  constructor(private readonly env: Env) {}
-
   async createRun(input: CreateReviewRunInput): Promise<ProviderRun> {
     const executeId = createMockExecuteId(input.reviewRunId)
     const materialAnalysis = buildMaterialAnalysis(input.projectTitle, input.files)
 
     return {
       executeId,
-      initialResult: {
+      result: {
         state: 'succeeded',
         content: JSON.stringify({
           materialAnalysis,
@@ -61,52 +56,10 @@ export class MockReviewProvider implements ReviewProvider {
       },
     }
   }
-
-  async getRun(executeId: string): Promise<ProviderRunResult> {
-    const execution = parseMockExecuteId(executeId)
-    const materialAnalysis = await this.readMaterialAnalysis(execution.reviewRunId)
-
-    return {
-      state: 'succeeded',
-      content: JSON.stringify({
-        materialAnalysis,
-        finalReport: buildReport(materialAnalysis),
-      }),
-    }
-  }
-
-  async cancelRun(_executeId: string): Promise<void> {
-    // No remote execution exists, so cancellation is intentionally a no-op.
-  }
-
-  private async readMaterialAnalysis(reviewRunId: string): Promise<MaterialAnalysis> {
-    const result = await findReviewResult(this.env.risktrace_db, reviewRunId, 'material_analysis')
-    if (!result) {
-      throw new AppError('WORKFLOW_PROVIDER_INVALID_STATE', '合规审查中间结果尚未就绪', 500)
-    }
-
-    try {
-      return JSON.parse(result.result_json) as MaterialAnalysis
-    } catch {
-      throw new AppError('STORED_RESULT_INVALID', '已保存的材料理解结果无法读取', 500)
-    }
-  }
 }
 
 function createMockExecuteId(reviewRunId: string): string {
   return `mock_${Date.now()}_${reviewRunId}`
-}
-
-function parseMockExecuteId(executeId: string): { startedAt: number; reviewRunId: string } {
-  const match = /^mock_(\d{10,})_(.+)$/.exec(executeId)
-  const startedAt = match?.[1] ? Number(match[1]) : Number.NaN
-  const reviewRunId = match?.[2]?.trim() ?? ''
-
-  if (!Number.isFinite(startedAt) || !reviewRunId) {
-    throw new AppError('WORKFLOW_PROVIDER_INVALID_STATE', '合规审查运行编号无效', 500)
-  }
-
-  return { startedAt, reviewRunId }
 }
 
 function buildMaterialAnalysis(

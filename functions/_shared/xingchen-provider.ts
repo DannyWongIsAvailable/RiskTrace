@@ -2,7 +2,6 @@ import { AppError } from './errors'
 import type {
   CreateReviewRunInput,
   ProviderRun,
-  ProviderRunResult,
   ReviewProvider,
 } from './review-provider'
 
@@ -27,10 +26,9 @@ interface XingchenResponse {
  * 1. createRun() 调用 /workflow/v1/chat/completions；
  * 2. 工作流内部一次性完成材料理解、领域审查和报告聚合；
  * 3. stream=false 时，最终业务结果从 choices[0].delta.content 读取；
- * 4. createRun() 通过 initialResult 将最终结果直接交给 review-service 落库。
+ * 4. createRun() 在同一个 HTTP 请求中返回终态结果，由 review-service 立即校验并落库。
  *
- * ReviewProvider 接口仍保留 getRun/cancelRun，是为了不影响 mock、deepseek-harness
- * 等其他 Provider。星辰同步模式正常完成后不会进入 getRun()。
+ * 当前阶段只支持同步 Provider，不提供 getRun/cancelRun 异步生命周期。
  */
 export class XingchenReviewProvider implements ReviewProvider {
   readonly name = 'xingchen' as const
@@ -149,33 +147,11 @@ export class XingchenReviewProvider implements ReviewProvider {
 
     return {
       executeId,
-      initialResult: {
+      result: {
         state: 'succeeded',
         content,
       },
     }
-  }
-
-  /**
-   * 星辰当前采用同步调用。
-   *
-   * 正常路径中 createRun() 已经带回 initialResult 并完成结果落库，不应再调用 getRun()。
-   * 如果由于异常中断导致数据库残留 reviewing 状态，这里明确返回失败，避免再次进入
-   * 已废弃的异步轮询逻辑并永久卡住。
-   */
-  async getRun(_executeId: string): Promise<ProviderRunResult> {
-    return {
-      state: 'failed',
-      providerMessage: '讯飞星辰当前使用同步工作流调用，不支持异步结果查询',
-    }
-  }
-
-  /**
-   * 同步请求返回时工作流已经结束，因此没有可取消的异步任务。
-   * 保留空实现以维持统一 ReviewProvider 接口。
-   */
-  async cancelRun(_executeId: string): Promise<void> {
-    return
   }
 
   private async post(path: string, body: Record<string, unknown>): Promise<XingchenResponse> {
