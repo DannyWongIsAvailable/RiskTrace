@@ -57,12 +57,6 @@ onBeforeUnmount(() => controller.abort())
       ]"
     />
 
-    <InlineNotice
-      title="自动审查流程"
-      description="上传完成后，系统会自动完成材料理解、领域审查和报告生成。"
-      tone="primary"
-    />
-
     <BaseCard title="项目基本信息" description="项目标题由用户填写，自动审查过程不会修改。">
       <el-form
         ref="formRef"

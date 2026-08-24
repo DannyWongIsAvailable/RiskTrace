@@ -136,11 +136,6 @@ onBeforeUnmount(() => controller.abort())
     />
 
     <template v-else-if="report">
-      <InlineNotice
-        title="报告使用说明"
-        description="请结合报告中的分析限制、关联材料和原始文件内容复核风险结论。"
-        tone="warning"
-      />
 
       <MaterialAnalysisPanel v-if="materialAnalysis" :analysis="materialAnalysis" />
 

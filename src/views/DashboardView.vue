@@ -262,12 +262,6 @@ onBeforeUnmount(() => loadController?.abort())
         tone="warning"
       />
 
-      <InlineNotice
-        title="统计口径"
-        description="统计范围为当前数据库中的全部采购项目；风险事项和风险等级仅统计已经生成最终报告的项目。"
-        tone="neutral"
-      />
-
       <div class="rt-grid rt-grid--metrics">
         <MetricCard
           v-for="metric in metricCards"

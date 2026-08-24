@@ -162,12 +162,6 @@ onBeforeUnmount(() => loadController?.abort())
       </template>
     </PageHeader>
 
-    <InlineNotice
-      title="自动审查流程"
-      description="材料上传完成后，系统将自动执行材料理解、领域审查和报告生成，无需重复发起。"
-      tone="neutral"
-    />
-
     <BaseTableCard
       title="项目列表"
       description="按最近更新时间排序"
