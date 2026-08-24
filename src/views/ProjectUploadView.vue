@@ -371,25 +371,12 @@ onBeforeUnmount(() => controller.abort())
     />
 
     <template v-else-if="project">
-      <InlineNotice
-        v-if="canUpload"
-        title="DeepSeek Harness 自动审查"
-        description="材料上传完成后只创建一次 Harness Run；页面读取同一 Session 的状态与事件，不会因刷新或轮询重复发起审查。"
-        tone="primary"
-      />
 
       <InlineNotice
         v-if="actionError"
         title="运行提示"
         :description="actionError"
         :tone="runtimeStatus === 'failed' ? 'danger' : 'warning'"
-      />
-
-      <InlineNotice
-        v-if="uploading"
-        title="正在上传材料"
-        description="这里显示的文件上传百分比来自真实网络字节进度；Harness 审查开始后不再显示伪完成百分比。"
-        tone="primary"
       />
 
       <BaseCard
