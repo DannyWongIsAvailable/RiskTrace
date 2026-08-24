@@ -35,7 +35,7 @@ const HEALTH_TIMEOUT_MS = 15_000
 const ASYNC_CONTRACT_TIMEOUT_MS = 15_000
 const HARNESS_TIMEOUT_MS = 300_000
 const MAX_RESPONSE_PREVIEW_LENGTH = 8_000
-const EXPECTED_ASYNC_CONTRACT = 'risktrace.harness.async.v1'
+const EXPECTED_ASYNC_CONTRACT = 'risktrace.harness.async.v2'
 
 function now(): string {
   return new Date().toISOString()
@@ -99,11 +99,6 @@ function readBoolean(value: unknown): boolean | null {
 
 function readString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-function isDeepSeekHarnessProvider(value: string): boolean {
-  const normalized = value.trim().toLowerCase()
-  return ['deepseek-harness', 'deepseek_harness', 'deepseek'].includes(normalized)
 }
 
 function readRemoteLogs(value: unknown): ProviderDiagnosticLogEntry[] {
@@ -210,8 +205,8 @@ export async function runProviderDiagnostics(
   const startedAt = now()
   const checkId = `provider-check-${crypto.randomUUID()}`
   const logs: ProviderDiagnosticLogEntry[] = []
-  const configuredProvider = env.REVIEW_PROVIDER?.trim() || 'mock'
-  const providerConfiguredForHarness = isDeepSeekHarnessProvider(configuredProvider)
+  const configuredProvider = 'deepseek-harness'
+  const providerConfiguredForHarness = true
   const baseUrl = normalizeBaseUrl(env.DEEPSEEK_HARNESS_BASE_URL)
   const safeBaseUrl = toSafeUrl(baseUrl)
   const apiKey = env.DEEPSEEK_HARNESS_API_KEY?.trim() || null
@@ -231,13 +226,6 @@ export async function runProviderDiagnostics(
     asyncContractTimeoutMs: ASYNC_CONTRACT_TIMEOUT_MS,
     harnessTimeoutMs: HARNESS_TIMEOUT_MS,
   })
-
-  if (!providerConfiguredForHarness) {
-    addLog(logs, 'warning', 'functions', '当前 REVIEW_PROVIDER 未配置为 DeepSeek Harness', {
-      configuredProvider,
-      acceptedValues: ['deepseek-harness', 'deepseek_harness', 'deepseek'],
-    })
-  }
 
   if (!baseUrl) {
     addLog(logs, 'error', 'functions', '缺少 DEEPSEEK_HARNESS_BASE_URL，无法继续检查')
@@ -342,9 +330,16 @@ export async function runProviderDiagnostics(
     const record = readRecord(payload)
     const service = readRecord(record?.service)
     const sampleRun = readRecord(record?.sampleRun)
+    const endpoints = readRecord(record?.endpoints)
+    const eventEndpoint = readRecord(endpoints?.events)
     const remoteOk = readBoolean(record?.ok) === true
     const contract = readString(record?.contract)
     const runManagerReady = readBoolean(service?.runManagerReady) === true
+    const eventEndpointValid =
+      readString(eventEndpoint?.method) === 'GET' &&
+      readString(eventEndpoint?.path)?.startsWith('/runs/{runId}/events') === true
+    const sampleEventsUrlValid =
+      readString(sampleRun?.eventsUrl) === '/runs/harnessrun_contract_probe/events'
     let sampleSnapshotValid = false
     let sampleSnapshotState: string | null = null
     let sampleSnapshotError: string | null = null
@@ -365,7 +360,9 @@ export async function runProviderDiagnostics(
       contract === EXPECTED_ASYNC_CONTRACT &&
       runManagerReady &&
       sampleSnapshotValid &&
-      sampleSnapshotState === 'queued'
+      sampleSnapshotState === 'queued' &&
+      eventEndpointValid &&
+      sampleEventsUrlValid
 
     asyncApiState = passed ? 'passed' : 'failed'
     addLog(
@@ -384,6 +381,8 @@ export async function runProviderDiagnostics(
           sampleSnapshotValid,
           sampleSnapshotState,
           sampleSnapshotError,
+          eventEndpointValid,
+          sampleEventsUrlValid,
           serviceVersion: readString(service?.version),
         },
         responseBody: passed ? undefined : responseText.slice(0, MAX_RESPONSE_PREVIEW_LENGTH),

@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.services.harness_service import run_harness_diagnostic
 
 router = APIRouter(prefix="/diagnostics", tags=["diagnostics"])
-ASYNC_RUN_CONTRACT = "risktrace.harness.async.v1"
+ASYNC_RUN_CONTRACT = "risktrace.harness.async.v2"
 
 
 class ProviderCheckRequest(BaseModel):
@@ -74,10 +74,17 @@ def async_contract(
             "createdAt": now,
             "updatedAt": now,
             "pollUrl": f"/runs/{diagnostic_run_id}",
+            "eventsUrl": f"/runs/{diagnostic_run_id}/events",
         },
         "endpoints": {
             "create": {"method": "POST", "path": "/runs", "successStatus": 202},
             "get": {"method": "GET", "path": "/runs/{runId}", "successStatus": 200},
+            "events": {
+                "method": "GET",
+                "path": "/runs/{runId}/events?after={seq}&limit={limit}",
+                "successStatus": 200,
+                "pagination": "exclusive-after-seq",
+            },
         },
     }
 

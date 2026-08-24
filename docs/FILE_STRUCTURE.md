@@ -118,9 +118,15 @@ ReviewReportView.vue
 ```text
 src/components/project/ProjectTable.vue
 src/components/project/MaterialUploadPanel.vue
-src/components/review/ReviewProgress.vue
-src/components/review/MaterialAnalysisPanel.vue
-src/components/review/RiskFindingTable.vue
+src/components/review/HarnessActivityPanel.vue
+src/components/review/HarnessActivityList.vue
+src/components/review/HarnessTurnGroup.vue
+src/components/review/HarnessAssistantActivity.vue
+src/components/review/HarnessToolActivity.vue
+src/components/review/HarnessErrorActivity.vue
+src/components/review/HarnessTodoPlan.vue
+src/components/review/HarnessActivityInspector.vue
+src/components/review/review-activity-projector.ts
 ```
 
 只在一个页面中使用且结构简单的内容，可以暂时保留在页面中；职责独立或明显会复用时再抽取。

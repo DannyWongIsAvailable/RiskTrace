@@ -3,7 +3,7 @@ from __future__ import annotations
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
 from app.core.config import settings
@@ -75,6 +75,7 @@ def create_run(
   _verify_authorization(authorization)
   snapshot = _manager(request).submit(body.model_dump())
   snapshot.setdefault("pollUrl", f"/runs/{snapshot['runId']}")
+  snapshot.setdefault("eventsUrl", f"/runs/{snapshot['runId']}/events")
   return snapshot
 
 
@@ -87,6 +88,25 @@ def get_run(
   _verify_authorization(authorization)
   try:
     return _manager(request).get(run_id)
+  except RunNotFoundError as exc:
+    raise HTTPException(
+      status_code=status.HTTP_404_NOT_FOUND,
+      detail="Harness run not found",
+    ) from exc
+
+
+@router.get("/runs/{run_id}/events")
+def get_run_events(
+  run_id: str,
+  request: Request,
+  after: int = Query(default=-1, ge=-1),
+  limit: int = Query(default=100, ge=1, le=200),
+  authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+  """Read the canonical append-only DeepSeek Harness Session Event log incrementally."""
+  _verify_authorization(authorization)
+  try:
+    return _manager(request).get_events(run_id, after_seq=after, limit=limit)
   except RunNotFoundError as exc:
     raise HTTPException(
       status_code=status.HTTP_404_NOT_FOUND,

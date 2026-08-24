@@ -5,17 +5,18 @@
 
 ## 1. 产品上下文
 
-RiskTrace 当前是一套面向企业采购项目的智能合规审查 Demo。用户只填写项目标题并一次性上传全部材料，系统随后通过统一 Review Provider 启动一次完整审查执行，连续完成材料理解、完整性检查、领域路由、领域审查和报告聚合。Provider 可由配置选择 Mock、讯飞星辰 Workflow 或 DeepSeek Harness，业务 API 不得绑定具体供应商。
+RiskTrace 当前是一套面向企业采购项目的智能合规审查 Demo。用户填写项目标题并上传材料后，系统只创建一个 DeepSeek Harness Run，连续完成材料理解、完整性检查、领域路由、领域审查和报告聚合。DeepSeek Harness 是唯一 Agent Runtime；Session Event 是工作过程事实源。
 
 当前版本的核心链路是：
 
 ```text
 项目标题
 → 全部材料上传
-→ 创建一个审查运行
-→ 通过 Review Provider 启动一次完整同步执行
-→ 页面与 Pages Functions 保持当前请求，等待同一 Provider 调用完成材料理解、领域审查和报告聚合
-→ Provider 在同一个 createRun 响应中返回终态与最终输出
+→ 创建一个 RiskTrace 审查运行
+→ 创建一次 DeepSeek Harness Run
+→ Python gateway 持久化完整 append-only Session Event
+→ 页面增量 replay 同一 Run 的 Turn / Step / Assistant / Tool / Todo
+→ Harness root turn 明确 completed 后返回最终输出
 → 一次性校验并保存材料理解结果和最终报告
 ```
 
@@ -66,15 +67,15 @@ RiskTrace 当前是一套面向企业采购项目的智能合规审查 Demo。�
 
 Pages Functions 负责：
 
-- 项目、文件、审查运行和结果 API；
+- 项目、文件、审查运行、结果和 Harness Event API；
 - R2 上传签名、上传确认和短时读取 URL；
-- 通过 Provider 启动一次贯通全流程的审查执行；
-- 一个审查尝试只允许一次同步 Provider `createRun` 调用；
-- `provider_name` 与 `provider_execute_id` 仅用于记录本次 Provider 和调用追踪 ID，不用于状态轮询；
-- 在 Provider 成功后一次取得最终输出，并分别校验、幂等保存材料理解结果和最终报告；
+- 为一个审查尝试创建且只创建一个 DeepSeek Harness Run；
+- 使用同一个 `provider_execute_id` 查询 Harness 状态与增量读取 Session Event，轮询不得创建第二个 Run；
+- 将 Harness Event 做浏览器安全裁剪后透传，保留官方 event type/envelope 与插件扩展事件；
+- 在 Harness root turn 明确 `completed` 后取得最终输出，并分别校验、幂等保存材料理解结果和最终报告；
 - D1 持久化、错误映射、重试边界和结构化日志。
 
-Pages Functions 不得把材料理解和领域审查拆成两个独立 Provider 执行，也不得在一次审查尝试中启动第二个 Provider 调用。外部工作流不得通过回调主动写正式结果；当前阶段只接受同步 `createRun` 在同一响应中返回终态最终输出，不实现 Provider 轮询。
+Pages Functions 不得把材料理解和领域审查拆成两个独立 Harness 执行，也不得从 `ProjectStage/progress` 反推工作轨迹。Session Event 是执行过程事实源；`progress` 仅作为历史数据库字段保留，审查 UI 不展示伪百分比。
 
 
 ## 4. 编码前上下文扫描
@@ -88,7 +89,7 @@ Pages Functions 不得把材料理解和领域审查拆成两个独立 Provider 
 5. 阅读 `docs/ICON_SYSTEM.md`；
 6. 涉及接口时阅读 `docs/API_CONVENTIONS.md`；
 7. 涉及错误和日志时阅读 `docs/ERROR_HANDLING_AND_OBSERVABILITY.md`；
-8. 当前同步 Review Provider 的实现与接口口径以 `docs/REVIEW_PROVIDER.md` 为准；若其他历史设计文档仍描述异步轮询，当前阶段不得据此恢复轮询逻辑；
+8. DeepSeek Harness 执行与 Session Event 可视化以 `docs/RiskTrace_DeepSeek_Harness_工作过程可视化重构设计.md` 和官方 deepseek-harness master 协议为准；
 9. 检查目标路由、相邻页面、相关组件、API、Store、类型和静态资源；
 10. 搜索已有基础组件、设计令牌和图标映射；
 11. 明确加载、成功、空数据、错误和权限受限状态；
@@ -100,26 +101,27 @@ Pages Functions 不得把材料理解和领域审查拆成两个独立 Provider 
 
 ```text
 Vue 3 前端
-    │ REST API
+    │ RiskTrace REST API
 Cloudflare Pages Functions
     ├─ D1：项目、文件、审查运行、中间结果和最终报告
     ├─ R2：原始材料、派生件和可选调试输出
-    └─ Review Provider
-          ├─ Mock
-          ├─ XingchenReviewProvider
-          └─ DeepSeekHarnessReviewProvider
-               材料理解 → 路由 Agent → 领域 Agent → 聚合 Agent
+    └─ DeepSeekHarnessReviewProvider
+             │ /runs /runs/{id} /runs/{id}/events
+      Python DeepSeek Harness Gateway
+             │ SDK / JSON-RPC stdio
+      DeepSeek Harness Session Event Log
 ```
 
 必须遵守：
 
-- 前端只通过 API 访问后端；
-- 前端不直接访问 D1、R2 或外部工作流；
-- 外部工作流平台通过 Provider 抽象接入，业务代码不得绑定特定 SDK；
-- Provider 通过 `REVIEW_PROVIDER` 统一选择，业务服务不得 import、判断或特殊处理任何具体 Provider 实现；
-- 所有审查执行模式在上传完成后都只通过统一 Provider 接口调用一次 `createRun`；
-- 材料理解结果和最终报告必须由同一 Provider 执行在成功终态一次性返回；
-- 外部服务输出必须再次经过后端校验；
+- 前端只通过 API 访问后端，不直接访问 D1、R2、Harness Base URL 或 Harness API Key；
+- DeepSeek Harness 是唯一 Agent Runtime，业务运行路径不得根据 `REVIEW_PROVIDER` 切换 Mock/星辰；
+- 一个审查尝试只允许一次 Harness `POST /runs`，状态与事件读取必须复用同一个 executeId；
+- Python gateway 必须持久化完整 canonical SessionEvent；未知插件事件不得在网关层因“不认识”而丢弃；
+- Vue 不直接解释所有 Harness 原始事件，工作过程由 projector 从 Event Log 投影；
+- 私有 reasoning/System Prompt/认证信息/签名 URL 不得发送到浏览器；
+- `tool/call` 与 `tool/result` 必须通过 `callId` 合并成一个生命周期；Code Mode 子调用通过 `subCallId` 配对；
+- 材料理解结果和最终报告必须由同一 Harness Run 在明确成功终态返回，并再次经过后端校验；
 
 
 ## 6. 目录职责
@@ -438,9 +440,9 @@ AI 生成代码时禁止：
 - 是否存在直接 `fetch`、直接模型调用或直接数据库访问；
 - API 类型、错误和请求编号是否完整；
 - 页面是否覆盖加载、空数据、错误和降级状态；
-- 是否只启动一条从材料理解贯通到报告聚合的工作流；
-- 是否每个审查尝试只执行一次同步 Provider `createRun`，且没有 Provider 轮询；
-- Provider 成功输出是否同时包含材料理解结果和最终报告，并在完整校验后分别幂等保存；
+- 是否只启动一条从材料理解贯通到报告聚合的 DeepSeek Harness Run；
+- 是否每个审查尝试只执行一次 Harness `POST /runs`，状态与 Event 轮询均复用同一个 executeId；
+- Harness `completed` 输出是否同时包含材料理解结果和最终报告，并在完整校验后分别幂等保存；
 - 风险事项引用的 `documentId` 是否属于当前项目；
 - 项目标题、文件名、R2 Key 和系统状态是否由后端控制；
 - 关键阶段、错误和重试是否记录结构化日志；

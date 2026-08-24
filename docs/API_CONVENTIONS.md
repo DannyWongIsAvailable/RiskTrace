@@ -275,3 +275,43 @@ Pages Functions 应复用 `functions/_shared/http.ts` 中的响应工具。
 - 权限要求。
 
 破坏性变更必须明确说明迁移方式，不允许悄悄改变既有接口语义。
+
+## 13. DeepSeek Harness 审查事件
+
+RiskTrace 只暴露项目级事件接口，浏览器不得直接访问 Python Harness Base URL：
+
+```text
+GET /api/projects/:projectId/review/events?after=-1&limit=100
+```
+
+约定：
+
+- `after` 为已消费的最后一个 Harness `seq`，采用 exclusive 语义；首次读取使用 `-1`；
+- `limit` 默认 `100`，最大 `200`；
+- 返回事件按 `seq` 严格升序；页面刷新时从 `after=-1` replay，再从最新 `nextSeq` 增量继续；
+- 一个 RiskTrace review attempt 只对应一个 DeepSeek Harness Run；状态查询和事件读取都复用同一个 executeId；
+- Event API 失败只表示轨迹连接异常，不得将后台 Review 自动标记失败；
+- Python gateway 持久化完整 canonical SessionEvent；Pages Functions 在发送到浏览器前只做安全裁剪，不改写 Harness event type、Turn/Step、Tool correlation、Todo 或插件扩展事件；
+- 私有 reasoning、System Prompt、认证信息和短时签名 URL 不得通过该接口暴露。
+
+响应数据：
+
+```json
+{
+  "reviewRunId": "review_xxx",
+  "runId": "harnessrun_xxx",
+  "sessionId": "session_xxx",
+  "events": [
+    {
+      "seq": 38,
+      "time": 1787490000000,
+      "type": "tool/call",
+      "data": {}
+    }
+  ],
+  "nextSeq": 38,
+  "hasMore": false
+}
+```
+
+`SessionEvent` 还可能携带官方 envelope 的 `ignorable`、`sourceEventSeqs`、`surfaceOp`；调用方必须允许插件扩展新的 `type`，不得把事件类型写成封闭枚举后静默丢弃未知事件。

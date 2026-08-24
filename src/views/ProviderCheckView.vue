@@ -152,8 +152,8 @@ onBeforeUnmount(() => controller?.abort())
 <template>
   <div class="rt-page rt-page-stack provider-check">
     <PageHeader
-      title="Provider 检查"
-      description="从当前页面依次检查 Pages Functions、ECS FastAPI、DeepSeek Harness 与模型调用，并直接展示诊断日志。"
+      title="DeepSeek Harness 检查"
+      description="从当前页面检查 Pages Functions、FastAPI Run/Event API、DeepSeek Harness SDK 与模型调用，并展示诊断日志。"
     >
       <template #actions>
         <el-button
@@ -170,19 +170,19 @@ onBeforeUnmount(() => controller?.abort())
 
     <InlineNotice
       v-if="loadError"
-      title="Provider 检查接口调用失败"
+      title="Harness 检查接口调用失败"
       :description="loadError"
       tone="danger"
     />
 
     <InlineNotice
       v-else-if="loading"
-      title="正在执行同步 Provider 检查"
-      description="Harness 模型调用可能需要几十秒到数分钟。页面会在本次同步检查完成后展示完整的 Functions、FastAPI 与 Harness 日志。"
+      title="正在执行 DeepSeek Harness 检查"
+      description="诊断会验证异步 Run/Event API 契约，并执行一次 Harness 模型探针；完成后展示 Functions、FastAPI 与 Harness 日志。"
       tone="warning"
     />
 
-    <BaseCard title="检查结果" description="当前 Provider 全链路状态">
+    <BaseCard title="检查结果" description="当前 DeepSeek Harness 全链路状态">
       <template #actions>
         <StatusTag :label="overallLabel" :tone="overallTone" />
       </template>
@@ -209,7 +209,7 @@ onBeforeUnmount(() => controller?.abort())
         <el-descriptions-item label="总耗时">
           {{ formatDuration(result.durationMs) }}
         </el-descriptions-item>
-        <el-descriptions-item label="REVIEW_PROVIDER">
+        <el-descriptions-item label="Agent Runtime">
           {{ result.provider.configuredProvider }}
         </el-descriptions-item>
         <el-descriptions-item label="Harness API Key">
@@ -236,7 +236,7 @@ onBeforeUnmount(() => controller?.abort())
         正在等待同步检查结果…
       </div>
       <div v-else-if="!result?.logs.length" class="provider-check__empty-log">
-        暂无日志。点击“开始检查”启动 Provider 诊断。
+        暂无日志。点击“开始检查”启动 Harness 诊断。
       </div>
       <div v-else class="provider-check__logs">
         <article

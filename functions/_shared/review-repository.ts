@@ -1,6 +1,5 @@
 import type { ProviderStatus, ReviewRunRow, ReviewStage, ReviewStatus } from './domain'
 import { AppError } from './errors'
-import type { ReviewProviderName } from './review-provider'
 
 export async function createOrGetReviewRun(
   db: D1Database,
@@ -12,7 +11,7 @@ export async function createOrGetReviewRun(
         `INSERT OR IGNORE INTO review_runs (
           id, project_id, status, stage, provider_status, progress,
           attempt_count, started_at, updated_at
-        ) VALUES (?, ?, 'reviewing', 'material_analysis_running', 'pending', 10, 1, ?, ?)`,
+        ) VALUES (?, ?, 'reviewing', 'material_analysis_running', 'pending', 0, 1, ?, ?)`,
       )
       .bind(input.id, input.projectId, input.now, input.now),
     db
@@ -69,7 +68,7 @@ export async function attachProviderExecuteId(
   db: D1Database,
   input: {
     reviewRunId: string
-    providerName: ReviewProviderName
+    providerName: 'deepseek-harness'
     executeId: string
     providerStatus: ProviderStatus
     progress: number
@@ -199,7 +198,7 @@ export async function markMaterialAnalysisSaved(
       .prepare(
         `UPDATE review_runs
          SET material_analysis_saved_at = COALESCE(material_analysis_saved_at, ?),
-             stage = 'report_aggregating', progress = 90, updated_at = ?
+             stage = 'report_aggregating', progress = 0, updated_at = ?
          WHERE id = ? AND project_id = ? AND status = 'reviewing'`,
       )
       .bind(input.now, input.now, input.reviewRunId, input.projectId),
@@ -224,7 +223,7 @@ export async function prepareReviewRetry(
         // noinspection SqlResolve
         `UPDATE review_runs
          SET status = 'reviewing', stage = 'material_analysis_running',
-             provider_name = NULL, provider_execute_id = NULL, provider_status = 'pending', progress = 10,
+             provider_name = NULL, provider_execute_id = NULL, provider_status = 'pending', progress = 0,
              attempt_count = attempt_count + 1,
              error_code = NULL, error_message = NULL, finished_at = NULL, updated_at = ?
          WHERE id = ? AND status = 'failed'`,

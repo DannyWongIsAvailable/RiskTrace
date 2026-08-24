@@ -21,8 +21,8 @@ import {
   updateProviderStatus,
   updateReviewState,
 } from './review-repository'
-import { createConfiguredReviewProvider } from './review-provider-factory'
-import type { ProviderRunSnapshot, ReviewProvider } from './review-provider'
+import { DeepSeekHarnessReviewProvider } from './deepseek-harness-provider'
+import type { ProviderRunEventPage, ProviderRunSnapshot } from './review-provider'
 import {
   normalizeMaterialAnalysis,
   normalizeReviewReport,
@@ -55,9 +55,9 @@ export async function startProjectReview(
     return run
   }
 
-  const provider = createConfiguredReviewProvider(env)
+  const harness = new DeepSeekHarnessReviewProvider(env)
   try {
-    return await createProviderRun(env, provider, project, run, documents)
+    return await createHarnessRun(env, harness, project, run, documents)
   } catch (error) {
     await markReviewFailed(env, {
       reviewRunId: run.id,
@@ -84,7 +84,7 @@ export async function retryProjectReview(
     throw new AppError('RETRY_LIMIT_EXCEEDED', '合规审查已达到最大重试次数', 409)
   }
 
-  const provider = createConfiguredReviewProvider(env)
+  const harness = new DeepSeekHarnessReviewProvider(env)
   const now = new Date().toISOString()
   await prepareReviewRetry(env.risktrace_db, {
     reviewRunId: run.id,
@@ -93,7 +93,7 @@ export async function retryProjectReview(
   })
   const retryRun = await requireReviewRunById(env.risktrace_db, run.id)
   try {
-    return await createProviderRun(env, provider, project, retryRun, documents)
+    return await createHarnessRun(env, harness, project, retryRun, documents)
   } catch (error) {
     await markReviewFailed(env, {
       reviewRunId: run.id,
@@ -113,7 +113,7 @@ export async function getReviewStatus(
 
   if (run.status === 'reviewing' && run.provider_execute_id) {
     try {
-      run = await refreshProviderRun(env, run)
+      run = await refreshHarnessRun(env, run)
     } catch (error) {
       if (!isTransientProviderRefreshError(error)) {
         throw error
@@ -134,6 +134,42 @@ export async function getReviewStatus(
   ])
 
   return toReviewStatusResponse(run, materialAnalysisAvailable, reportAvailable)
+}
+
+export async function getReviewEvents(
+  env: Env,
+  projectId: string,
+  afterSeq: number,
+  limit = 100,
+): Promise<ProviderRunEventPage & { reviewRunId: string }> {
+  const run = await requireReviewRunByProject(env.risktrace_db, projectId)
+  if (!run.provider_execute_id) {
+    return {
+      reviewRunId: run.id,
+      executeId: '',
+      events: [],
+      nextSeq: afterSeq,
+      hasMore: false,
+    }
+  }
+  if (run.provider_name && run.provider_name !== 'deepseek-harness') {
+    throw new AppError(
+      'WORKFLOW_PROVIDER_INVALID_CONFIG',
+      '当前审查运行不是 DeepSeek Harness 执行，无法读取 Session Event',
+      500,
+    )
+  }
+
+  const harness = new DeepSeekHarnessReviewProvider(env)
+  const page = await harness.getEvents(run.provider_execute_id, afterSeq, limit)
+  if (page.executeId !== run.provider_execute_id) {
+    throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', 'DeepSeek Harness 返回了错误的 runId', 502)
+  }
+
+  return {
+    reviewRunId: run.id,
+    ...page,
+  }
 }
 
 export async function getMaterialAnalysis(
@@ -159,15 +195,15 @@ export async function getFinalReport(env: Env, projectId: string): Promise<Revie
   return parseStoredResult<ReviewReport>(result.result_json)
 }
 
-async function createProviderRun(
+async function createHarnessRun(
   env: Env,
-  provider: ReviewProvider,
+  harness: DeepSeekHarnessReviewProvider,
   project: ProjectRow,
   run: ReviewRunRow,
   documents: Awaited<ReturnType<typeof listDocuments>>,
 ): Promise<ReviewRunRow> {
   const files = await createReviewProviderFileList(env, documents)
-  const snapshot = await provider.createRun({
+  const snapshot = await harness.createRun({
     projectId: project.id,
     reviewRunId: run.id,
     projectTitle: project.title,
@@ -177,7 +213,7 @@ async function createProviderRun(
 
   await attachProviderExecuteId(env.risktrace_db, {
     reviewRunId: run.id,
-    providerName: provider.name,
+    providerName: 'deepseek-harness',
     executeId: snapshot.executeId,
     providerStatus: providerStatusForSnapshot(snapshot),
     progress: progressForSnapshot(snapshot),
@@ -193,28 +229,21 @@ async function createProviderRun(
   return requireReviewRunById(env.risktrace_db, run.id)
 }
 
-async function refreshProviderRun(env: Env, run: ReviewRunRow): Promise<ReviewRunRow> {
+async function refreshHarnessRun(env: Env, run: ReviewRunRow): Promise<ReviewRunRow> {
   if (!run.provider_execute_id || run.status !== 'reviewing') {
     return run
   }
 
-  const provider = createConfiguredReviewProvider(env)
-  if (run.provider_name && provider.name !== run.provider_name) {
+  if (run.provider_name && run.provider_name !== 'deepseek-harness') {
     throw new AppError(
       'WORKFLOW_PROVIDER_INVALID_CONFIG',
-      '当前 Provider 配置与正在执行的审查任务不一致',
-      500,
-    )
-  }
-  if (!provider.getRun) {
-    throw new AppError(
-      'WORKFLOW_PROVIDER_INVALID_CONFIG',
-      '当前合规审查 Provider 不支持异步状态查询',
+      '当前审查运行不是 DeepSeek Harness 执行，无法继续读取',
       500,
     )
   }
 
-  const snapshot = await provider.getRun(run.provider_execute_id)
+  const harness = new DeepSeekHarnessReviewProvider(env)
+  const snapshot = await harness.getRun(run.provider_execute_id)
   if (snapshot.executeId !== run.provider_execute_id) {
     throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', 'Provider 返回了错误的运行编号', 502)
   }
@@ -224,7 +253,7 @@ async function refreshProviderRun(env: Env, run: ReviewRunRow): Promise<ReviewRu
       reviewRunId: run.id,
       projectId: run.project_id,
       providerStatus: snapshot.state === 'queued' ? 'starting' : 'running',
-      progress: snapshot.state === 'queued' ? 10 : 20,
+      progress: 0,
       now: new Date().toISOString(),
     })
     return requireReviewRunById(env.risktrace_db, run.id)
@@ -294,17 +323,7 @@ function providerStatusForSnapshot(snapshot: ProviderRunSnapshot) {
 }
 
 function progressForSnapshot(snapshot: ProviderRunSnapshot): number {
-  switch (snapshot.state) {
-    case 'queued':
-      return 10
-    case 'running':
-      return 20
-    case 'succeeded':
-      return 90
-    case 'interrupted':
-    case 'failed':
-      return 0
-  }
+  return snapshot.state === 'succeeded' ? 100 : 0
 }
 
 function isTransientProviderRefreshError(error: unknown): error is AppError {

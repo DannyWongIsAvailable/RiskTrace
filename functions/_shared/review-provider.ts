@@ -28,19 +28,47 @@ export type ProviderExecutionState =
 export interface ProviderRunSnapshot {
   executeId: string
   state: ProviderExecutionState
-  /** Provider-neutral final output. A succeeded run must return materialAnalysis + finalReport. */
+  /** Final RiskTrace output returned by the Harness gateway after a completed root turn. */
   content?: string
+  /** Public root assistant response retained for diagnostics; not required by business persistence. */
+  finalResponse?: string
   providerMessage?: string
+  harness?: Record<string, unknown>
 }
 
 /**
- * Stable boundary between RiskTrace review orchestration and any review runtime.
+ * Safe browser-facing projection of one canonical DeepSeek Harness SessionEvent.
  *
- * Synchronous providers may return a terminal snapshot from createRun(). Providers that return
- * queued/running must implement getRun() so RiskTrace can reconcile their state from GET /review.
+ * The Python gateway keeps the complete event JSON losslessly. Pages Functions preserves the
+ * official envelope and plugin event vocabulary, but redacts private reasoning, system prompt
+ * text, signed URLs and authentication-shaped values before sending events to the browser.
+ */
+export interface ProviderRunEvent {
+  seq: number
+  time: number
+  type: string
+  data: unknown
+  ignorable?: true
+  sourceEventSeqs?: number[]
+  surfaceOp?: 'append' | { op: 'replace'; start: number; end: number }
+}
+
+export interface ProviderRunEventPage {
+  executeId: string
+  sessionId?: string
+  events: ProviderRunEvent[]
+  nextSeq: number
+  hasMore: boolean
+}
+
+/**
+ * Legacy provider interface kept only so dormant Mock/Xingchen source files continue to compile.
+ * The active RiskTrace review path now constructs DeepSeekHarnessReviewProvider directly and no
+ * longer selects or branches on REVIEW_PROVIDER.
  */
 export interface ReviewProvider {
   readonly name: ReviewProviderName
   createRun(input: CreateReviewRunInput): Promise<ProviderRunSnapshot>
   getRun?(executeId: string): Promise<ProviderRunSnapshot>
+  getEvents?(executeId: string, afterSeq: number, limit?: number): Promise<ProviderRunEventPage>
 }

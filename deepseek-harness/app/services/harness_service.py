@@ -42,6 +42,7 @@ class HarnessExecutionError(RuntimeError):
     event_summary: list[dict[str, Any]] | None = None,
     exception_type: str | None = None,
     session_id: str | None = None,
+    events: list[dict[str, Any]] | None = None,
   ) -> None:
     super().__init__(message)
     self.finish_reason = finish_reason
@@ -52,6 +53,7 @@ class HarnessExecutionError(RuntimeError):
     self.event_summary = event_summary or []
     self.exception_type = exception_type
     self.session_id = session_id
+    self.events = events or []
 
   def to_api_error(self) -> dict[str, Any]:
     error: dict[str, Any] = {
@@ -680,24 +682,13 @@ def _normalize_provider_output(
   ):
     raw_material_analysis = nested
 
-  # 缺少任何一半结果时也不让 Pages 校验失败，生成保守结构继续完成流程。
+  # A completed Harness turn must still satisfy the RiskTrace result contract.
+  # Do not manufacture a successful business result in the gateway: if a tool is
+  # unavailable the Agent may explicitly return the degraded schema from the prompt.
   if raw_material_analysis is None:
-    raw_material_analysis = {
-      "summary": "模型未返回完整的材料理解结果。",
-      "materials": [],
-      "completeness": {
-        "result": "uncertain",
-        "summary": "材料理解结果缺失，完整性暂无法确认。",
-        "missingMaterials": [],
-      },
-    }
-
+    raise ValueError("Harness output is missing materialAnalysis")
   if raw_final_report is None:
-    degraded = _build_degraded_output(
-      payload,
-      "模型未返回完整的 finalReport，系统已自动生成降级审查结果。",
-    )
-    raw_final_report = degraded["finalReport"]
+    raise ValueError("Harness output is missing finalReport")
 
   return {
     "materialAnalysis": _normalize_material_analysis(
@@ -715,41 +706,16 @@ def parse_output(
   text: str,
   payload: dict[str, Any],
 ) -> dict[str, Any]:
-  """
-  Convert Harness output into the exact shape expected by RiskTrace Pages.
-
-  This function deliberately degrades instead of throwing when:
-  - MinerU/document parsing is unavailable and the model explains it in prose;
-  - the model wraps JSON in Markdown or short explanatory text;
-  - individual fields have wrong types or unsupported enum values;
-  - one of materialAnalysis/finalReport is missing.
-  """
+  """Parse an explicitly completed Harness response without inventing a success result."""
   text = (text or "").strip()
-
   if not text:
-    return _build_degraded_output(
-      payload,
-      "DeepSeek Harness 未返回结果内容，可能是文档解析工具不可用或本次执行未生成最终响应。",
-    )
+    raise ValueError("DeepSeek Harness completed without a final response")
 
   parsed = _extract_json_object(text)
   if parsed is None:
-    return _build_degraded_output(
-      payload,
-      "模型未返回可解析的 JSON。可能原因包括 MinerU/文档解析工具不可用、文件无法访问，或模型未遵守结构化输出要求。",
-      raw_response=text,
-    )
+    raise ValueError("DeepSeek Harness final response is not a JSON object")
 
-  try:
-    return _normalize_provider_output(parsed, payload)
-  except Exception as exc:
-    # 最后一层保险：模型 JSON 即使出现意外结构，也不要让整个 review workflow
-    # 因结构化错误而失败。
-    return _build_degraded_output(
-      payload,
-      f"模型结果无法规范化为 RiskTrace 输出结构：{type(exc).__name__}: {exc}",
-      raw_response=text,
-    )
+  return _normalize_provider_output(parsed, payload)
 
 
 def _looks_like_document_parser_unavailable(exc: Exception) -> bool:
@@ -993,27 +959,6 @@ def run_review_detailed(
         on_notification=on_notification,
       )
   except Exception as exc:
-    # Preserve the existing product behavior for explicitly recognized document
-    # parser/tool availability failures: return a valid degraded RiskTrace result.
-    if _looks_like_document_parser_unavailable(exc):
-      return {
-        "output": _build_degraded_output(
-          payload,
-          f"文档解析工具不可用：{type(exc).__name__}: {exc}",
-        ),
-        "finalResponse": "",
-        "harness": {
-          "sessionId": harness_session_id,
-          "finishReason": "degraded",
-          "eventCount": 0,
-          "lastTurnEnd": None,
-          "eventSummary": [],
-          "degraded": True,
-          "exceptionType": type(exc).__name__,
-          "exceptionMessage": str(exc),
-        },
-      }
-
     raise HarnessExecutionError(
       f"DeepSeek Harness runtime exception [{type(exc).__name__}]: {exc}",
       finish_reason="error",
@@ -1028,11 +973,19 @@ def run_review_detailed(
   diagnostics = _result_diagnostics(result)
   finish_reason = diagnostics["finishReason"]
   final_response = result.final_response or ""
+  events = [event for event in result.events if isinstance(event, dict)] if isinstance(result.events, list) else []
 
-  if finish_reason == "error":
+  # The SDK exposes the root turn/end reason directly. Only an explicitly completed
+  # turn is a successful RiskTrace execution; max-tokens/aborted/blocked/interrupted
+  # remain real Harness terminal states instead of being normalized into success.
+  if finish_reason != "completed":
     harness_error = _last_harness_error(diagnostics)
+    if finish_reason == "error":
+      message = _format_harness_error_message(harness_error)
+    else:
+      message = f"DeepSeek Harness turn ended with finish reason: {finish_reason or 'unknown'}"
     raise HarnessExecutionError(
-      _format_harness_error_message(harness_error),
+      message,
       finish_reason=finish_reason,
       final_response=final_response,
       harness_error=harness_error,
@@ -1040,12 +993,28 @@ def run_review_detailed(
       last_turn_end=diagnostics["lastTurnEnd"],
       event_summary=diagnostics["eventSummary"],
       session_id=diagnostics["sessionId"] or harness_session_id,
+      events=events,
     )
 
+  try:
+    output = parse_output(final_response, payload)
+  except Exception as exc:
+    raise HarnessExecutionError(
+      f"DeepSeek Harness completed but returned invalid RiskTrace output: {exc}",
+      finish_reason=finish_reason,
+      final_response=final_response,
+      event_count=diagnostics["eventCount"],
+      last_turn_end=diagnostics["lastTurnEnd"],
+      event_summary=diagnostics["eventSummary"],
+      session_id=diagnostics["sessionId"] or harness_session_id,
+      events=events,
+    ) from exc
+
   return {
-    "output": parse_output(final_response, payload),
+    "output": output,
     "finalResponse": final_response,
     "harness": diagnostics,
+    "events": events,
   }
 
 

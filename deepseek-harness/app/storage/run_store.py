@@ -32,8 +32,17 @@ def _json_loads(value: str | None) -> Any:
     return None
 
 
+def _event_integer(value: Any, field: str) -> int:
+  if isinstance(value, bool) or not isinstance(value, (int, float)):
+    raise ValueError(f"Harness event {field} must be numeric")
+  integer = int(value)
+  if integer < 0 or integer != value:
+    raise ValueError(f"Harness event {field} must be a non-negative integer")
+  return integer
+
+
 class RunStore:
-  """SQLite-backed state store for long-running DeepSeek Harness executions."""
+  """SQLite-backed state and lossless Session Event store for DeepSeek Harness runs."""
 
   def __init__(self, path: Path) -> None:
     self.path = path
@@ -78,6 +87,23 @@ class RunStore:
       )
       connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_async_runs_finished ON async_runs(finished_at)",
+      )
+      connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS run_events (
+          run_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          seq INTEGER NOT NULL,
+          event_time INTEGER NOT NULL,
+          event_type TEXT NOT NULL,
+          event_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (run_id, seq)
+        )
+        """,
+      )
+      connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_run_events_run_seq ON run_events(run_id, seq)",
       )
 
   def create_or_get(
@@ -158,6 +184,85 @@ class RunStore:
         (_json_dumps(harness), _timestamp(), run_id),
       )
 
+  def append_event(
+    self,
+    run_id: str,
+    session_id: str,
+    event: dict[str, Any],
+  ) -> bool:
+    """Persist one canonical SessionEvent verbatim; duplicate seq notifications are idempotent."""
+    seq = _event_integer(event.get("seq"), "seq")
+    event_time = _event_integer(event.get("time"), "time")
+    event_type = event.get("type")
+    if not isinstance(event_type, str) or not event_type:
+      raise ValueError("Harness event type must be a non-empty string")
+
+    event_json = _json_dumps(event)
+    with self._connect() as connection:
+      cursor = connection.execute(
+        """
+        INSERT OR IGNORE INTO run_events (
+          run_id, session_id, seq, event_time, event_type, event_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (run_id, session_id, seq, event_time, event_type, event_json, _timestamp()),
+      )
+    return cursor.rowcount == 1
+
+  def list_events(
+    self,
+    run_id: str,
+    *,
+    after_seq: int,
+    limit: int,
+  ) -> tuple[list[dict[str, Any]], bool]:
+    """Return canonical SessionEvents after seq, ordered exactly by their session sequence."""
+    with self._connect() as connection:
+      rows = connection.execute(
+        """
+        SELECT event_json
+        FROM run_events
+        WHERE run_id = ? AND seq > ?
+        ORDER BY seq ASC
+        LIMIT ?
+        """,
+        (run_id, after_seq, limit + 1),
+      ).fetchall()
+
+    has_more = len(rows) > limit
+    selected = rows[:limit]
+    events: list[dict[str, Any]] = []
+    for row in selected:
+      value = _json_loads(row["event_json"])
+      if isinstance(value, dict):
+        events.append(value)
+    return events, has_more
+
+  def get_event_session_id(self, run_id: str) -> str | None:
+    with self._connect() as connection:
+      row = connection.execute(
+        """
+        SELECT session_id
+        FROM run_events
+        WHERE run_id = ?
+        ORDER BY seq ASC
+        LIMIT 1
+        """,
+        (run_id,),
+      ).fetchone()
+    if row is None:
+      return None
+    value = row["session_id"]
+    return value if isinstance(value, str) and value else None
+
+  def count_events(self, run_id: str) -> int:
+    with self._connect() as connection:
+      row = connection.execute(
+        "SELECT COUNT(*) AS count FROM run_events WHERE run_id = ?",
+        (run_id,),
+      ).fetchone()
+    return int(row["count"] if row is not None else 0)
+
   def mark_completed(
     self,
     run_id: str,
@@ -216,31 +321,23 @@ class RunStore:
       )
 
   def reconcile_stale_runs_on_startup(self) -> int:
-    """Fail queued/running rows left by a previous FastAPI process."""
+    """Fail queued/running rows left by a previous FastAPI process without deleting their events."""
     startup_time = _timestamp()
     error = {
       "code": "SERVICE_RESTARTED",
       "message": "Harness 服务重启，本次执行已中断，请重试",
-    }
-    harness = {
-      "finishReason": "service_restarted",
-      "eventCount": 0,
-      "lastTurnEnd": None,
-      "eventSummary": [],
     }
     with self._connect() as connection:
       cursor = connection.execute(
         """
         UPDATE async_runs
         SET status = 'failed', request_json = NULL,
-            message = ?, error_json = ?, harness_json = ?,
-            finished_at = ?, updated_at = ?
+            message = ?, error_json = ?, finished_at = ?, updated_at = ?
         WHERE status IN ('queued', 'running') AND updated_at < ?
         """,
         (
           error["message"],
           _json_dumps(error),
-          _json_dumps(harness),
           startup_time,
           startup_time,
           startup_time,
@@ -251,16 +348,34 @@ class RunStore:
   def prune_terminal_runs(self, retention_hours: int) -> int:
     cutoff = _timestamp(_utcnow() - timedelta(hours=retention_hours))
     with self._connect() as connection:
-      cursor = connection.execute(
-        """
-        DELETE FROM async_runs
-        WHERE status IN ('completed', 'failed')
-          AND finished_at IS NOT NULL
-          AND finished_at < ?
-        """,
-        (cutoff,),
-      )
-      return cursor.rowcount
+      connection.execute("BEGIN IMMEDIATE")
+      try:
+        rows = connection.execute(
+          """
+          SELECT run_id
+          FROM async_runs
+          WHERE status IN ('completed', 'failed')
+            AND finished_at IS NOT NULL
+            AND finished_at < ?
+          """,
+          (cutoff,),
+        ).fetchall()
+        run_ids = [row["run_id"] for row in rows]
+        if run_ids:
+          placeholders = ",".join("?" for _ in run_ids)
+          connection.execute(
+            f"DELETE FROM run_events WHERE run_id IN ({placeholders})",
+            run_ids,
+          )
+          connection.execute(
+            f"DELETE FROM async_runs WHERE run_id IN ({placeholders})",
+            run_ids,
+          )
+        connection.execute("COMMIT")
+      except Exception:
+        connection.execute("ROLLBACK")
+        raise
+    return len(run_ids)
 
   @staticmethod
   def _to_snapshot(row: sqlite3.Row) -> dict[str, Any]:

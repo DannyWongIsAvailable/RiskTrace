@@ -1,6 +1,7 @@
 import {
   Bell,
   CircleCheckFilled,
+  CircleCloseFilled,
   Close,
   DataAnalysis,
   Delete,
@@ -51,6 +52,7 @@ export const AppIcons = {
   },
   status: {
     success: CircleCheckFilled,
+    danger: CircleCloseFilled,
     warning: WarningFilled,
     loading: Loading,
   },

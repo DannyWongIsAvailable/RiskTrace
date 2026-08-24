@@ -1,6 +1,6 @@
 # RiskTrace
 
-RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需填写项目标题并一次性上传当前已有的全部材料，系统随后通过统一 `ReviewProvider` 启动一次完整审查执行，在同一次执行中连续完成材料理解、完整性检查、领域路由、领域审查和报告聚合。当前可在 Mock、讯飞星辰 Workflow 与 DeepSeek Harness 之间切换，前端 API 保持不变。
+RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户填写项目标题并上传当前已有材料后，系统只创建一个 DeepSeek Harness Run；Pages Functions 持续读取同一个 Run 的状态与 Session Event，最终保存材料理解和合规审查报告。DeepSeek Harness 是唯一运行时，不再通过 `REVIEW_PROVIDER` 在 Mock / 星辰 / Harness 间切换。
 
 > 仓库地址：https://github.com/DannyWongIsAvailable/RiskTrace.git  
 > 线上地址：https://risktrace.pages.dev/
@@ -9,25 +9,25 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户只需�
 
 ## 当前 MVP 开发模式
 
-为先打通可演示链路，当前前端保留“审查总览 → 项目列表 → 新建项目 → 上传材料 → 查看报告”五个页面。项目、文件和结果仍通过 Pages Functions、D1 与 R2 真实读写。`POST /api/projects/:projectId/uploads/complete` 现在统一进入 `startProjectReview`，再由 `REVIEW_PROVIDER` 选择 Mock、讯飞星辰或 DeepSeek Harness；因此切换 Provider 不再需要修改前端接口或上传完成路由。默认配置仍为 `mock`，保持现有演示行为。
+当前前端保留“审查总览 → 项目列表 → 新建项目 → 上传材料 → 查看报告”五个页面。项目、文件和结果通过 Pages Functions、D1 与 R2 真实读写。`POST /api/projects/:projectId/uploads/complete` 只负责创建一次 DeepSeek Harness Run；浏览器随后通过 RiskTrace API 增量读取该 Run 的 Session Event，并以 Harness Trajectory 形式展示真实 Turn / Step / Assistant / Tool / Todo 轨迹。
 
-Provider 适配、环境变量和 DeepSeek Harness HTTP 契约见 `docs/REVIEW_PROVIDER.md`。
+工作过程可视化与事件投影约束见 `docs/RiskTrace_DeepSeek_Harness_工作过程可视化重构设计.md`。
 
 ## 1. 核心链路
 
 ```text
 用户填写项目标题
 → 一次性上传全部材料
-→ 上传批次完成后创建一个审查运行
-→ 通过 ReviewProvider 启动一次完整审查执行
-→ 同一 Provider 执行完成材料理解、自动分类、领域审查和报告聚合
-→ 页面保持同步请求并等待同一次 Provider 调用返回终态
-→ Provider 成功后一次性返回 materialAnalysis + finalReport
-→ API 先完整校验两部分结果，再分别保存 D1
-→ 前端通过 RiskTrace API 展示整体执行状态、材料分类和最终报告
+→ 上传批次完成后创建一个 RiskTrace review run
+→ Pages Functions 创建且只创建一个 DeepSeek Harness Run
+→ Python Harness gateway 接收并持久化完整 Session Event
+→ Vue 增量读取 /review/events 并 replay Turn / Step / Tool / Assistant / Todo
+→ 同一 Harness Run 完成材料理解、自动分类、领域审查和报告聚合
+→ Harness completed 后校验 materialAnalysis + finalReport 并保存 D1
+→ 审查完成后继续保留该次 Session Trajectory 用于追溯
 ```
 
-整个流程不要求用户手工分类、确认材料理解结果或再次点击“发起审查”。材料理解和报告聚合属于同一个 Provider 执行实例，不拆成两次外部执行。
+整个流程不要求用户手工分类、确认材料理解结果或再次点击“发起审查”。一个审查尝试只创建一个 Harness Run；状态查询与 Event replay 都针对同一个 `provider_execute_id`，轮询不得创建第二次执行。
 
 ## 2. 当前 Demo 范围
 
@@ -36,9 +36,9 @@ Provider 适配、环境变量和 DeepSeek Harness HTTP 契约见 `docs/REVIEW_P
 - 创建采购项目时只填写项目标题；
 - 一次选择并上传全部已有材料；
 - 文件直接上传私有 Cloudflare R2；
-- 上传完成后自动创建一个审查运行并通过当前配置的 Review Provider 启动执行；
+- 上传完成后自动创建一个审查运行并启动唯一的 DeepSeek Harness 执行；
 - 自动生成材料名称、类别、逐文件摘要、项目摘要和完整性结果；
-- 工作流运行期间只展示整体执行状态，完成后一次性展示材料理解结果和最终报告；
+- Harness 运行期间展示真实 Session Event 工作轨迹，完成后继续保留轨迹并开放材料理解结果和最终报告；
 - 由路由 Agent 选择适用领域 Agent；
 - 领域 Agent 结合材料对象和原始文件执行审查；
 - 聚合 Agent 输出只读风险报告；
@@ -60,7 +60,7 @@ Provider 适配、环境变量和 DeepSeek Harness HTTP 契约见 `docs/REVIEW_P
 |---|---|---|
 | 顶层业务对象 | 采购项目 | `project` / `Project` / `projectId` |
 | 一次自动化审查过程 | 合规审查 | `review` / `reviewRun` / `reviewRunId` |
-| Provider 单次执行 | 同步工作流调用 | `providerExecuteId` / `executeId`（仅追踪） |
+| Harness 单次执行 | Harness Run | `providerExecuteId` / `executeId` |
 | 材料理解中间输出 | 材料理解结果 | `materialAnalysis` |
 | 最终检出结果 | 风险事项 | `riskFinding` / `RiskFinding` / `findingId` |
 | 最终聚合输出 | 合规审查报告 | `reviewReport` / `ReviewReport` |
@@ -71,18 +71,19 @@ Provider 适配、环境变量和 DeepSeek Harness HTTP 契约见 `docs/REVIEW_P
 
 ```text
 Vue 3 Web 应用
-        │ REST API
+        │ RiskTrace REST API
 Cloudflare Pages Functions
         ├─ Cloudflare D1：项目、文件、审查运行、中间结果和最终报告
         ├─ Cloudflare R2：原始材料、派生件和可选调试输出
-        └─ Review Provider
-              ├─ Mock
-              ├─ 讯飞星辰 Workflow
-              └─ DeepSeek Harness
-                    材料理解 → 路由 Agent → 领域 Agent → 聚合 Agent
+        └─ DeepSeek Harness adapter
+                 │ POST /runs + GET /runs/{id} + GET /runs/{id}/events
+          Python Harness Gateway
+                 │ JSON-RPC stdio / SDK
+          DeepSeek Harness Session
+                 └─ append-only Session Event Log
 ```
 
-Pages Functions 负责项目创建、上传编排、R2 短时访问、同步 Provider 调用、模型结果校验、幂等保存和稳定 API 输出。前端在 `/uploads/complete` 请求中直接等待最终结果，不轮询 Provider。前端不得直接访问 D1、R2 或任何外部模型/工作流平台。
+Pages Functions 负责项目创建、上传编排、R2 短时访问、创建唯一 Harness Run、状态同步、事件安全投影、模型结果校验、幂等保存和稳定 API 输出。浏览器不直接访问 Harness Base URL/API Key，只调用 RiskTrace `/review` 与 `/review/events`。
 
 ## 5. 技术栈
 
@@ -110,13 +111,12 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、同步 Pro
 
 ### 外部工作流 / Agent Runtime
 
-- 业务层只依赖统一 `ReviewProvider` 接口；
-- `REVIEW_PROVIDER=mock|xingchen|deepseek-harness` 选择实现；
-- 讯飞星辰 Provider 负责星辰专有认证、参数名和 Workflow API；
-- DeepSeek Harness Provider 负责 Harness 同步 HTTP 契约和终态结果归一化；
-- 一次审查运行持久化 `provider_name + provider_execute_id`；其中 `provider_execute_id` 仅作为同步调用追踪 ID，不用于状态轮询；
-- 材料理解结果和最终报告由同一次 Provider 执行在成功终态一次性返回。
-- 前端和业务 API 只暴露材料理解、审查阶段和报告等业务语义，不暴露或判断具体 Provider。
+- DeepSeek Harness 是唯一 Agent Runtime；`REVIEW_PROVIDER` 不再参与运行时选择；
+- Pages Functions 直接使用 `DeepSeekHarnessReviewProvider` 作为 Harness HTTP adapter；
+- 一个审查尝试持久化一个 `provider_execute_id`，状态查询与事件读取始终复用该 ID；
+- Python gateway 将完整 SessionEvent JSON 按 `(run_id, seq)` 幂等持久化并支持增量 replay；
+- 浏览器事件接口保留官方 event vocabulary/envelope，但会移除私有 reasoning、System Prompt、密钥与签名 URL；
+- 材料理解结果和最终报告只在 Harness root turn 明确 `completed` 且输出通过业务校验后保存。
 
 ## 6. 目标页面与路由
 
@@ -125,13 +125,13 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、同步 Pro
 | `/dashboard` | 审查总览 | 展示项目状态、审查进度、报告与风险事项统计 |
 | `/projects` | 采购项目列表 | 查询项目和进入新建流程 |
 | `/projects/new` | 新建采购项目 | 填写项目标题并一次性上传材料 |
-| `/projects/:projectId/upload` | 项目材料与审查进度 | 上传材料、等待同步审查 API 返回，并在完成后展示材料理解结果 |
+| `/projects/:projectId/upload` | 项目材料与 Harness 轨迹 | 上传材料、实时查看 Session Event 工作过程，并在完成后展示材料理解结果 |
 | `/projects/:projectId/report` | 合规审查报告 | 展示只读风险报告和关联文件 |
 | `/foundation` | 设计系统 | 仅开发环境使用的基础组件预览 |
 
 处置中心和规则中心不属于当前 Demo 范围，不应作为当前版本的业务导航或开发目标。
 
-当前仓库已经完成前端工程底座、审查总览与采购项目四个主流程页面、项目/上传/统计 API、D1/R2 读写、统一同步 Review Provider、结果校验和报告读取。
+当前仓库已经完成前端工程底座、采购项目主流程、D1/R2 读写、DeepSeek Harness 异步 Run、Session Event replay、Trajectory 投影、结果校验和报告读取。
 
 ## 7. 目录约定
 
@@ -241,9 +241,9 @@ pnpm cf:deploy
 ## 12. 核心工程规则
 
 - 顶层业务对象统一使用“采购项目”和 `project` 命名；
-- 一个审查运行只启动一次从材料理解贯通到报告聚合的 Provider 执行；
-- 不得为材料理解和领域审查分别创建两个 Provider 调用；一次 `/uploads/complete` 只允许一次完整同步 Provider 执行；
-- Provider 成功后必须一次性返回材料理解结果和最终报告，两部分完整校验后再分别幂等保存；
+- 一个审查运行只启动一次从材料理解贯通到报告聚合的 DeepSeek Harness Run；
+- 不得为材料理解和领域审查分别创建两个 Harness Run；一次 `/uploads/complete` 只允许一次 `POST /runs`；
+- Harness root turn 明确 `completed` 后必须返回材料理解结果和最终报告，两部分完整校验后再分别幂等保存；
 - Vue 组件和 Pinia Store 不得直接调用 `fetch`；
 - 浏览器请求统一经过 `src/api/request.ts` 与 `src/api/modules/`；
 - 前端不得直接访问数据库、对象存储或外部工作流；

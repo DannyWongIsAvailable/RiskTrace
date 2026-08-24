@@ -1,5 +1,6 @@
 import { ApiError, http } from '@/api/request'
 import type { PageQuery } from '@/types/api'
+import type { ReviewEventPage } from '@/types/review-activity'
 import type {
   CompleteUploadsResult,
   CreateProjectInput,
@@ -112,6 +113,40 @@ export function getProjectReviewStatus(
   return http.get<ReviewStatusResponse>(`/api/projects/${projectId}/review`, {
     signal,
     timeoutMs: 20_000,
+  })
+}
+
+export function getProjectReviewEvents(
+  projectId: string,
+  afterSeq: number,
+  signal?: AbortSignal,
+  limit = 100,
+): Promise<ReviewEventPage> {
+  return http.get<ReviewEventPage>(`/api/projects/${projectId}/review/events`, {
+    query: { after: afterSeq, limit },
+    signal,
+    timeoutMs: 20_000,
+    validate: isReviewEventPage,
+  })
+}
+
+function isReviewEventPage(value: unknown): value is ReviewEventPage {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const page = value as Record<string, unknown>
+  if (typeof page.reviewRunId !== 'string') return false
+  if (page.runId !== null && typeof page.runId !== 'string') return false
+  if (page.sessionId !== null && typeof page.sessionId !== 'string') return false
+  if (!Number.isSafeInteger(page.nextSeq) || typeof page.nextSeq !== 'number') return false
+  if (typeof page.hasMore !== 'boolean' || !Array.isArray(page.events)) return false
+
+  return page.events.every((event) => {
+    if (!event || typeof event !== 'object' || Array.isArray(event)) return false
+    const record = event as Record<string, unknown>
+    if (!Number.isSafeInteger(record.seq) || typeof record.seq !== 'number' || record.seq < 0) return false
+    if (!Number.isSafeInteger(record.time) || typeof record.time !== 'number' || record.time < 0) return false
+    if (typeof record.type !== 'string' || !Object.prototype.hasOwnProperty.call(record, 'data')) return false
+    return !(record.sourceEventSeqs !== undefined && (!Array.isArray(record.sourceEventSeqs) || !record.sourceEventSeqs.every((seq) => Number.isSafeInteger(seq) && typeof seq === 'number' && seq >= 0)));
+
   })
 }
 

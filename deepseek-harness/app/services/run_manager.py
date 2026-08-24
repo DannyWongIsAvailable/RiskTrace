@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class RunManager:
-  """Owns the in-process executor used to detach Harness work from HTTP requests."""
+  """Owns detached Harness execution plus durable, replayable Session Events."""
 
   def __init__(
     self,
@@ -55,6 +55,32 @@ class RunManager:
     self._cleanup_if_due()
     return self.store.require(run_id)
 
+  def get_events(self, run_id: str, *, after_seq: int, limit: int) -> dict[str, Any]:
+    self._cleanup_if_due()
+    snapshot = self.store.require(run_id)
+    events, has_more = self.store.list_events(run_id, after_seq=after_seq, limit=limit)
+    next_seq = after_seq
+    if events:
+      last_seq = events[-1].get("seq")
+      if isinstance(last_seq, int):
+        next_seq = last_seq
+
+    session_id = self.store.get_event_session_id(run_id)
+    if session_id is None:
+      harness = snapshot.get("harness")
+      if isinstance(harness, dict):
+        candidate = harness.get("sessionId")
+        if isinstance(candidate, str) and candidate:
+          session_id = candidate
+
+    return {
+      "runId": run_id,
+      "sessionId": session_id,
+      "events": events,
+      "nextSeq": next_seq,
+      "hasMore": has_more,
+    }
+
   def reconcile_stale_runs_on_startup(self) -> int:
     reconciled = self.store.reconcile_stale_runs_on_startup()
     if reconciled:
@@ -78,6 +104,15 @@ class RunManager:
     }
     last_flush = 0.0
 
+    def persist_event(session_id: str, event: dict[str, Any]) -> bool:
+      inserted = self.store.append_event(run_id, session_id, event)
+      if inserted:
+        notification_state["eventCount"] = self.store.count_events(run_id)
+        event_type = event.get("type")
+        if isinstance(event_type, str):
+          notification_state["lastEventType"] = event_type
+      return inserted
+
     def on_notification(notification: Any) -> None:
       nonlocal last_flush
       try:
@@ -87,25 +122,38 @@ class RunManager:
           return
 
         session_id = payload.get("sessionId")
-        if notification_state["sessionId"] is None and isinstance(session_id, str):
+        event = payload.get("event")
+        if not isinstance(session_id, str) or not session_id or not isinstance(event, dict):
+          return
+
+        if notification_state["sessionId"] is None:
           notification_state["sessionId"] = session_id
         if session_id != notification_state["sessionId"]:
           return
 
-        event = payload.get("event")
-        if isinstance(event, dict):
-          notification_state["eventCount"] += 1
-          event_type = event.get("type")
-          if isinstance(event_type, str):
-            notification_state["lastEventType"] = event_type
-
+        inserted = persist_event(session_id, event)
         current = time.monotonic()
-        if notification_state["eventCount"] == 1 or current - last_flush >= 2.0:
+        if inserted and (notification_state["eventCount"] == 1 or current - last_flush >= 1.0):
           self.store.update_running_harness(run_id, dict(notification_state))
           last_flush = current
       except Exception:
-        # Diagnostics must never be able to fail the actual model execution.
-        logger.exception("Failed to persist live Harness diagnostics: run_id=%s", run_id)
+        # Session Event persistence is observability; it must never abort the agent loop.
+        logger.exception("Failed to persist live Harness Session Event: run_id=%s", run_id)
+
+    def backfill_events(session_id: str | None, events: list[dict[str, Any]]) -> None:
+      if not session_id:
+        return
+      for event in events:
+        if not isinstance(event, dict):
+          continue
+        try:
+          persist_event(session_id, event)
+        except Exception:
+          logger.exception(
+            "Failed to backfill Harness Session Event: run_id=%s session_id=%s",
+            run_id,
+            session_id,
+          )
 
     try:
       execution = run_review_detailed(
@@ -113,27 +161,36 @@ class RunManager:
         run_id=review_run_id,
         on_notification=on_notification,
       )
+      harness = execution["harness"]
+      session_id = harness.get("sessionId") if isinstance(harness, dict) else None
+      backfill_events(session_id if isinstance(session_id, str) else None, execution.get("events", []))
+      if isinstance(harness, dict):
+        harness["eventCount"] = self.store.count_events(run_id)
+
       self.store.mark_completed(
         run_id,
         output=execution["output"],
         final_response=execution["finalResponse"],
-        harness=execution["harness"],
+        harness=harness,
       )
       logger.info(
         "Harness run completed: review_run_id=%s execute_id=%s harness_session_id=%s finish_reason=%s event_count=%s",
         review_run_id,
         run_id,
-        execution["harness"].get("sessionId"),
-        execution["harness"].get("finishReason"),
-        execution["harness"].get("eventCount"),
+        harness.get("sessionId"),
+        harness.get("finishReason"),
+        harness.get("eventCount"),
       )
     except HarnessExecutionError as exc:
+      backfill_events(exc.session_id, exc.events)
+      diagnostics = exc.to_harness_diagnostics()
+      diagnostics["eventCount"] = self.store.count_events(run_id)
       self.store.mark_failed(
         run_id,
         message=str(exc),
         error=exc.to_api_error(),
         final_response=exc.final_response,
-        harness=exc.to_harness_diagnostics(),
+        harness=diagnostics,
       )
       logger.exception(
         "Harness run failed: review_run_id=%s execute_id=%s finish_reason=%s",
@@ -154,7 +211,7 @@ class RunManager:
         harness={
           "sessionId": notification_state.get("sessionId"),
           "finishReason": "error",
-          "eventCount": notification_state.get("eventCount", 0),
+          "eventCount": self.store.count_events(run_id),
           "lastEventType": notification_state.get("lastEventType"),
           "lastTurnEnd": None,
           "eventSummary": [],
