@@ -11,6 +11,7 @@ import {
 } from '@/api/modules'
 import { isApiError } from '@/api/request'
 import MaterialAnalysisPanel from '@/components/projects/MaterialAnalysisPanel.vue'
+import ProjectDetailTabs from '@/components/projects/ProjectDetailTabs.vue'
 import { AppIcons } from '@/icons'
 import type {
   MaterialAnalysis,
@@ -108,10 +109,6 @@ function formatFileSize(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function goToReview(): void {
-  void router.push({ name: 'project-review', params: { projectId: projectId.value } })
-}
-
 onMounted(() => void loadReport())
 onBeforeUnmount(() => controller.abort())
 </script>
@@ -128,9 +125,10 @@ onBeforeUnmount(() => controller.abort())
     >
       <template #actions>
         <el-button @click="$router.push({ name: 'projects' })">返回项目列表</el-button>
-        <el-button @click="goToReview">查看执行过程</el-button>
       </template>
     </PageHeader>
+
+    <ProjectDetailTabs :project-id="projectId" :report-ready="true" />
 
     <LoadingState v-if="loading" title="正在读取合规审查报告" :rows="7" />
     <ErrorState

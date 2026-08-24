@@ -2,12 +2,12 @@
 import { AppIcons } from '@/icons'
 import type { ReviewActivity } from '@/types/review-activity'
 
-defineProps<{ activity: ReviewActivity }>()
+withDefaults(defineProps<{ activity: ReviewActivity; selected?: boolean }>(), { selected: false })
 const emit = defineEmits<{ select: [] }>()
 </script>
 
 <template>
-  <button type="button" class="harness-error" @click="emit('select')">
+  <button type="button" class="harness-error" :class="{ 'is-selected': selected }" @click="emit('select')">
     <el-icon class="harness-error__icon">
       <component :is="activity.status === 'failed' ? AppIcons.status.danger : AppIcons.status.warning" />
     </el-icon>
@@ -26,6 +26,7 @@ const emit = defineEmits<{ select: [] }>()
 
 <style scoped>
 .harness-error { width: 100%; display: grid; grid-template-columns: 22px minmax(0,1fr); gap: var(--rt-space-3); padding: var(--rt-space-3) 0; border: 0; border-bottom: 1px solid var(--rt-border-subtle); background: transparent; text-align: left; cursor: pointer; color: inherit; }
+.harness-error.is-selected { background: var(--rt-bg-selected); }
 .harness-error:focus-visible { outline: 2px solid var(--rt-color-primary-500); outline-offset: 2px; }
 .harness-error__icon { margin-top: 3px; color: var(--rt-color-danger-600); }
 .harness-error__body { min-width: 0; }

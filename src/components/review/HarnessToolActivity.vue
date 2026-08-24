@@ -2,7 +2,7 @@
 import { AppIcons } from '@/icons'
 import type { ReviewActivity } from '@/types/review-activity'
 
-const props = defineProps<{ activity: ReviewActivity }>()
+const props = withDefaults(defineProps<{ activity: ReviewActivity; selected?: boolean }>(), { selected: false })
 const emit = defineEmits<{ select: [] }>()
 
 function formatDuration(ms?: number): string | null {
@@ -13,7 +13,7 @@ function formatDuration(ms?: number): string | null {
 </script>
 
 <template>
-  <button type="button" class="harness-tool" @click="emit('select')">
+  <button type="button" class="harness-tool" :class="{ 'is-selected': props.selected }" @click="emit('select')">
     <el-icon class="harness-tool__icon" :class="{ 'is-running': props.activity.status === 'running' }">
       <component :is="props.activity.status === 'failed' ? AppIcons.status.danger : props.activity.status === 'completed' ? AppIcons.status.success : AppIcons.status.loading" />
     </el-icon>
@@ -30,6 +30,7 @@ function formatDuration(ms?: number): string | null {
 
 <style scoped>
 .harness-tool { width: 100%; display: grid; grid-template-columns: 22px minmax(0,1fr); gap: var(--rt-space-3); padding: var(--rt-space-3) 0; border: 0; border-bottom: 1px solid var(--rt-border-subtle); background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.harness-tool.is-selected { background: var(--rt-bg-selected); }
 .harness-tool:focus-visible { outline: 2px solid var(--rt-color-primary-500); outline-offset: 2px; }
 .harness-tool__icon { margin-top: 3px; color: var(--rt-text-tertiary); }
 .harness-tool__icon.is-running { color: var(--rt-color-primary-600); animation: harness-tool-spin 1.2s linear infinite; }

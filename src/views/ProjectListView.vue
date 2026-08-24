@@ -233,11 +233,11 @@ onBeforeUnmount(() => loadController?.abort())
             <el-button v-if="canUploadProject(row)" type="primary" link @click="openProjectUpload(row)">
               上传材料
             </el-button>
-            <el-button v-if="canViewReport(row)" type="primary" link @click="openProjectReport(row)">
-              查看报告
-            </el-button>
             <el-button v-if="canViewReview(row)" link @click="openProjectReview(row)">
               查看执行过程
+            </el-button>
+            <el-button v-if="canViewReport(row)" type="primary" link @click="openProjectReport(row)">
+              查看报告
             </el-button>
             <el-button
               type="danger"

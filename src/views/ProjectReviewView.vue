@@ -11,6 +11,7 @@ import {
 } from '@/api/modules'
 import { isApiError } from '@/api/request'
 import MaterialAnalysisPanel from '@/components/projects/MaterialAnalysisPanel.vue'
+import ProjectDetailTabs from '@/components/projects/ProjectDetailTabs.vue'
 import HarnessActivityPanel from '@/components/review/HarnessActivityPanel.vue'
 import { projectReviewActivity } from '@/components/review/review-activity-projector'
 import type { ReviewConnectionState, ReviewHarnessEvent } from '@/types/review-activity'
@@ -27,6 +28,8 @@ const project = ref<ProjectDetail>()
 const materialAnalysis = ref<MaterialAnalysis>()
 const reviewStatus = ref<ReviewStatusResponse>()
 const reviewEvents = ref<ReviewHarnessEvent[]>([])
+const harnessRunId = ref<string | null>(null)
+const harnessSessionId = ref<string | null>(null)
 const reviewConnectionState = ref<ReviewConnectionState>('disconnected')
 const reviewConnectionMessage = ref('')
 const lastEventSeq = ref(-1)
@@ -76,6 +79,8 @@ async function loadPage(): Promise<void> {
 
 function resetReviewTrajectory(): void {
   reviewEvents.value = []
+  harnessRunId.value = null
+  harnessSessionId.value = null
   lastEventSeq.value = -1
   reviewConnectionMessage.value = ''
   reviewConnectionState.value = 'connecting'
@@ -100,6 +105,8 @@ async function fetchReviewEvents(drainAll = false): Promise<void> {
         controller.signal,
         EVENT_PAGE_LIMIT,
       )
+      if (page.runId) harnessRunId.value = page.runId
+      if (page.sessionId) harnessSessionId.value = page.sessionId
       if (page.events.length > 0) mergeEvents(page.events)
       lastEventSeq.value = Math.max(lastEventSeq.value, page.nextSeq)
       hasMore = page.hasMore
@@ -241,9 +248,10 @@ onBeforeUnmount(() => controller.abort())
     >
       <template #actions>
         <el-button @click="$router.push({ name: 'projects' })">返回项目列表</el-button>
-        <el-button v-if="reportReady" type="primary" @click="goToReport">查看审查报告</el-button>
       </template>
     </PageHeader>
+
+    <ProjectDetailTabs :project-id="projectId" :report-ready="reportReady" />
 
     <LoadingState v-if="loading" title="正在读取合规审查执行过程" :rows="6" />
     <ErrorState
@@ -282,6 +290,9 @@ onBeforeUnmount(() => controller.abort())
           :connection-state="reviewConnectionState"
           :connection-message="reviewConnectionMessage"
           :report-ready="reportReady"
+          :review-run-id="project.review.reviewRunId"
+          :run-id="harnessRunId"
+          :session-id="harnessSessionId"
           @view-report="goToReport"
         />
 

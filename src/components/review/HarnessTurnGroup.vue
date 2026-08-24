@@ -5,7 +5,11 @@ import HarnessErrorActivity from './HarnessErrorActivity.vue'
 import HarnessToolActivity from './HarnessToolActivity.vue'
 import type { ReviewActivity, ReviewTurnBoundary } from '@/types/review-activity'
 
-const props = defineProps<{ turn: ReviewTurnBoundary; activities: ReviewActivity[] }>()
+const props = defineProps<{
+  turn: ReviewTurnBoundary
+  activities: ReviewActivity[]
+  selectedActivityId?: string
+}>()
 const emit = defineEmits<{ select: [activity: ReviewActivity] }>()
 
 const grouped = computed(() => {
@@ -33,17 +37,47 @@ const unscoped = computed(() => props.activities.filter((activity) => activity.s
     <div v-for="group in grouped" :key="group.step" class="harness-turn__step">
       <div class="harness-turn__step-label">Step {{ group.step }}</div>
       <template v-for="activity in group.activities" :key="activity.id">
-        <HarnessAssistantActivity v-if="activity.kind === 'assistant'" :activity="activity" @select="emit('select', activity)" />
-        <HarnessToolActivity v-else-if="activity.kind === 'tool'" :activity="activity" @select="emit('select', activity)" />
-        <HarnessErrorActivity v-else-if="activity.kind === 'error'" :activity="activity" @select="emit('select', activity)" />
+        <HarnessAssistantActivity
+          v-if="activity.kind === 'assistant'"
+          :activity="activity"
+          :selected="activity.id === props.selectedActivityId"
+          @select="emit('select', activity)"
+        />
+        <HarnessToolActivity
+          v-else-if="activity.kind === 'tool'"
+          :activity="activity"
+          :selected="activity.id === props.selectedActivityId"
+          @select="emit('select', activity)"
+        />
+        <HarnessErrorActivity
+          v-else-if="activity.kind === 'error'"
+          :activity="activity"
+          :selected="activity.id === props.selectedActivityId"
+          @select="emit('select', activity)"
+        />
       </template>
       <p v-if="group.activities.length === 0" class="harness-turn__empty">该 Step 暂无可公开展示的活动</p>
     </div>
 
     <template v-for="activity in unscoped" :key="activity.id">
-      <HarnessAssistantActivity v-if="activity.kind === 'assistant'" :activity="activity" @select="emit('select', activity)" />
-      <HarnessToolActivity v-else-if="activity.kind === 'tool'" :activity="activity" @select="emit('select', activity)" />
-      <HarnessErrorActivity v-else-if="activity.kind === 'error'" :activity="activity" @select="emit('select', activity)" />
+      <HarnessAssistantActivity
+          v-if="activity.kind === 'assistant'"
+          :activity="activity"
+          :selected="activity.id === props.selectedActivityId"
+          @select="emit('select', activity)"
+        />
+      <HarnessToolActivity
+          v-else-if="activity.kind === 'tool'"
+          :activity="activity"
+          :selected="activity.id === props.selectedActivityId"
+          @select="emit('select', activity)"
+        />
+      <HarnessErrorActivity
+          v-else-if="activity.kind === 'error'"
+          :activity="activity"
+          :selected="activity.id === props.selectedActivityId"
+          @select="emit('select', activity)"
+        />
     </template>
   </section>
 </template>
