@@ -75,18 +75,41 @@ function getProjectStageLabel(row: unknown): string {
   return stageLabels[asProjectSummary(row).stage]
 }
 
-function getProjectActionLabel(row: unknown): string {
-  const project = asProjectSummary(row)
-  if (project.status === 'completed') return '查看报告'
-  if (project.status === 'reviewing') return '查看进度'
-  if (project.status === 'failed') return '查看失败详情'
-  return '上传材料'
+function canUploadProject(row: unknown): boolean {
+  const status = asProjectSummary(row).status
+  return status === 'draft' || status === 'uploading'
+}
+
+function canViewReview(row: unknown): boolean {
+  const status = asProjectSummary(row).status
+  return status === 'reviewing' || status === 'completed' || status === 'failed'
+}
+
+function canViewReport(row: unknown): boolean {
+  return asProjectSummary(row).status === 'completed'
 }
 
 function openProject(row: unknown): void {
   const project = asProjectSummary(row)
-  const routeName = project.status === 'completed' ? 'project-report' : 'project-upload'
+  let routeName: 'project-upload' | 'project-review' | 'project-report' = 'project-upload'
+  if (project.status === 'completed') routeName = 'project-report'
+  else if (project.status === 'reviewing' || project.status === 'failed') routeName = 'project-review'
   void router.push({ name: routeName, params: { projectId: project.projectId } })
+}
+
+function openProjectUpload(row: unknown): void {
+  const project = asProjectSummary(row)
+  void router.push({ name: 'project-upload', params: { projectId: project.projectId } })
+}
+
+function openProjectReview(row: unknown): void {
+  const project = asProjectSummary(row)
+  void router.push({ name: 'project-review', params: { projectId: project.projectId } })
+}
+
+function openProjectReport(row: unknown): void {
+  const project = asProjectSummary(row)
+  void router.push({ name: 'project-report', params: { projectId: project.projectId } })
 }
 
 function requestProjectDelete(row: unknown): void {
@@ -205,10 +228,16 @@ onBeforeUnmount(() => loadController?.abort())
             {{ formatDate(row.updatedAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="190" fixed="right">
+        <el-table-column label="操作" width="310" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="openProject(row)">
-              {{ getProjectActionLabel(row) }}
+            <el-button v-if="canUploadProject(row)" type="primary" link @click="openProjectUpload(row)">
+              上传材料
+            </el-button>
+            <el-button v-if="canViewReport(row)" type="primary" link @click="openProjectReport(row)">
+              查看报告
+            </el-button>
+            <el-button v-if="canViewReview(row)" link @click="openProjectReview(row)">
+              查看执行过程
             </el-button>
             <el-button
               type="danger"

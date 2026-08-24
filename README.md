@@ -9,7 +9,7 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户填写�
 
 ## 当前 MVP 开发模式
 
-当前前端保留“审查总览 → 项目列表 → 新建项目 → 上传材料 → 查看报告”五个页面。项目、文件和结果通过 Pages Functions、D1 与 R2 真实读写。`POST /api/projects/:projectId/uploads/complete` 只负责创建一次 DeepSeek Harness Run；浏览器随后通过 RiskTrace API 增量读取该 Run 的 Session Event，并以 Harness Trajectory 形式展示真实 Turn / Step / Assistant / Tool / Todo 轨迹。
+当前前端保留“审查总览 → 项目列表 → 新建项目 → 上传材料 → 执行过程 → 查看报告”主链页面。上传材料与 Harness 执行过程使用独立路由；审查开始后可从项目列表随时重新进入执行过程追溯 Session Event，也可在完成后独立查看报告。项目、文件和结果通过 Pages Functions、D1 与 R2 真实读写。`POST /api/projects/:projectId/uploads/complete` 只负责创建一次 DeepSeek Harness Run；浏览器随后通过 RiskTrace API 增量读取该 Run 的 Session Event，并以 Harness Trajectory 形式展示真实 Turn / Step / Assistant / Tool / Todo 轨迹。
 
 工作过程可视化与事件投影约束见 `docs/RiskTrace_DeepSeek_Harness_工作过程可视化重构设计.md`。
 
@@ -125,7 +125,8 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、创建唯�
 | `/dashboard` | 审查总览 | 展示项目状态、审查进度、报告与风险事项统计 |
 | `/projects` | 采购项目列表 | 查询项目和进入新建流程 |
 | `/projects/new` | 新建采购项目 | 填写项目标题并一次性上传材料 |
-| `/projects/:projectId/upload` | 项目材料与 Harness 轨迹 | 上传材料、实时查看 Session Event 工作过程，并在完成后展示材料理解结果 |
+| `/projects/:projectId/upload` | 项目材料上传 | 选择并上传项目材料，提交后进入独立执行过程页 |
+| `/projects/:projectId/review` | 合规审查执行过程 | 实时或历史回放 Session Event 工作过程，并在完成后展示材料理解结果 |
 | `/projects/:projectId/report` | 合规审查报告 | 展示只读风险报告和关联文件 |
 | `/foundation` | 设计系统 | 仅开发环境使用的基础组件预览 |
 

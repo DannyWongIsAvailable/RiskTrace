@@ -173,14 +173,15 @@ function recentProjectRiskTone(row: unknown): StatusTone {
 }
 
 function openProject(project: DashboardRecentProject): void {
-  const routeName = project.status === 'completed' ? 'project-report' : 'project-upload'
+  let routeName: 'project-upload' | 'project-review' | 'project-report' = 'project-upload'
+  if (project.status === 'completed') routeName = 'project-report'
+  else if (project.status === 'reviewing' || project.status === 'failed') routeName = 'project-review'
   void router.push({ name: routeName, params: { projectId: project.projectId } })
 }
 
 function projectActionLabel(project: DashboardRecentProject): string {
   if (project.status === 'completed') return '查看报告'
-  if (project.status === 'reviewing') return '查看进度'
-  if (project.status === 'failed') return '查看详情'
+  if (project.status === 'reviewing' || project.status === 'failed') return '查看执行过程'
   return '继续上传'
 }
 

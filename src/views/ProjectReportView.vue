@@ -108,6 +108,10 @@ function formatFileSize(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function goToReview(): void {
+  void router.push({ name: 'project-review', params: { projectId: projectId.value } })
+}
+
 onMounted(() => void loadReport())
 onBeforeUnmount(() => controller.abort())
 </script>
@@ -124,6 +128,7 @@ onBeforeUnmount(() => controller.abort())
     >
       <template #actions>
         <el-button @click="$router.push({ name: 'projects' })">返回项目列表</el-button>
+        <el-button @click="goToReview">查看执行过程</el-button>
       </template>
     </PageHeader>
 

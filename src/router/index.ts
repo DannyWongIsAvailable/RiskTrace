@@ -8,6 +8,7 @@ import ProjectCreateView from '@/views/ProjectCreateView.vue'
 import ProjectListView from '@/views/ProjectListView.vue'
 import ProviderCheckView from '@/views/ProviderCheckView.vue'
 import ProjectReportView from '@/views/ProjectReportView.vue'
+import ProjectReviewView from '@/views/ProjectReviewView.vue'
 import ProjectUploadView from '@/views/ProjectUploadView.vue'
 
 const router = createRouter({
@@ -68,6 +69,15 @@ const router = createRouter({
           meta: {
             title: '上传项目材料',
             description: '批量上传项目材料并生成报告。',
+          },
+        },
+        {
+          path: 'projects/:projectId/review',
+          name: 'project-review',
+          component: ProjectReviewView,
+          meta: {
+            title: '合规审查执行过程',
+            description: '查看 DeepSeek Harness Session 的工作轨迹与运行状态。',
           },
         },
         {
