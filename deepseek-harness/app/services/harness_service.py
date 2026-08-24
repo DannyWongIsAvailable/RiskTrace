@@ -375,7 +375,7 @@ parseStrategy: {file.get("parseStrategy")}
 
 {files_text}
 
-请根据每个材料提供的 fileUrl，优先使用MinerU工具，以fileUrl参数调用上传文件MinerU读取和解析文件内容。
+请根据每个材料提供的 fileUrl，优先使用MinerU工具，以fileUrl参数调用MinerU读取和解析文件内容。
 不需要下载文件到本地，不要根据文件名猜测材料正文。
 
 如果 MinerU、文档解析插件、文件下载工具或其他必要解析能力不可用：
