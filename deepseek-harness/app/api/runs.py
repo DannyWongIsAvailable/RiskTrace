@@ -100,7 +100,7 @@ def get_run_events(
   run_id: str,
   request: Request,
   after: int = Query(default=-1, ge=-1),
-  limit: int = Query(default=100, ge=1, le=200),
+  limit: int = Query(default=100, ge=1, le=5000),
   authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
   """Read the canonical append-only DeepSeek Harness Session Event log incrementally."""

@@ -10,8 +10,9 @@ import type {
 const CREATE_REQUEST_TIMEOUT_MS = 30_000
 const STATUS_REQUEST_TIMEOUT_MS = 15_000
 const EVENTS_REQUEST_TIMEOUT_MS = 15_000
+const HISTORICAL_EVENTS_REQUEST_TIMEOUT_MS = 30_000
 const CONTRACT_VERSION = 'risktrace.review.v1'
-const MAX_EVENT_PAGE_SIZE = 200
+const MAX_EVENT_PAGE_SIZE = 5000
 const MAX_BROWSER_STRING_LENGTH = 24_000
 
 /**
@@ -74,7 +75,7 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
       'GET',
       `/runs/${encodeURIComponent(executeId)}/events?after=${encodeURIComponent(String(afterSeq))}&limit=${pageSize}`,
       undefined,
-      EVENTS_REQUEST_TIMEOUT_MS,
+      pageSize > 200 ? HISTORICAL_EVENTS_REQUEST_TIMEOUT_MS : EVENTS_REQUEST_TIMEOUT_MS,
     )
     return normalizeDeepSeekHarnessEventPage(response, executeId)
   }

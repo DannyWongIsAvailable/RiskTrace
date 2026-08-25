@@ -13,6 +13,9 @@ from app.storage.run_store import RunStore
 
 logger = logging.getLogger(__name__)
 
+LIVE_EVENT_PAGE_LIMIT = 200
+COMPLETED_EVENT_PAGE_LIMIT = 5000
+
 
 class RunManager:
   """Owns detached Harness execution plus durable, replayable Session Events."""
@@ -58,7 +61,17 @@ class RunManager:
   def get_events(self, run_id: str, *, after_seq: int, limit: int) -> dict[str, Any]:
     self._cleanup_if_due()
     snapshot = self.store.require(run_id)
-    events, has_more = self.store.list_events(run_id, after_seq=after_seq, limit=limit)
+    max_limit = (
+      COMPLETED_EVENT_PAGE_LIMIT
+      if snapshot.get("status") == "completed"
+      else LIVE_EVENT_PAGE_LIMIT
+    )
+    effective_limit = max(1, min(max_limit, int(limit)))
+    events, has_more = self.store.list_events(
+      run_id,
+      after_seq=after_seq,
+      limit=effective_limit,
+    )
     next_seq = after_seq
     if events:
       last_seq = events[-1].get("seq")

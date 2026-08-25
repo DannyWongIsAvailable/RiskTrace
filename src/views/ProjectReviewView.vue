@@ -20,6 +20,7 @@ import type { MaterialAnalysis, ProjectDetail, ReviewStatusResponse } from '@/ty
 const EVENT_POLL_INTERVAL_MS = 1250
 const STATUS_POLL_EVERY_TICKS = 2
 const EVENT_PAGE_LIMIT = 200
+const COMPLETED_EVENT_PAGE_LIMIT = 5000
 
 const route = useRoute()
 const router = useRouter()
@@ -88,10 +89,17 @@ function resetReviewTrajectory(): void {
 
 async function replayReviewEvents(): Promise<void> {
   resetReviewTrajectory()
+  if (project.value?.review?.status === 'completed') {
+    await fetchReviewEvents(false, COMPLETED_EVENT_PAGE_LIMIT)
+    return
+  }
   await fetchReviewEvents(true)
 }
 
-async function fetchReviewEvents(drainAll = false): Promise<void> {
+async function fetchReviewEvents(
+  drainAll = false,
+  pageLimit = EVENT_PAGE_LIMIT,
+): Promise<void> {
   if (!project.value?.review) return
   if (reviewConnectionState.value === 'disconnected') reviewConnectionState.value = 'connecting'
 
@@ -103,7 +111,7 @@ async function fetchReviewEvents(drainAll = false): Promise<void> {
         projectId.value,
         lastEventSeq.value,
         controller.signal,
-        EVENT_PAGE_LIMIT,
+        pageLimit,
       )
       if (page.runId) harnessRunId.value = page.runId
       if (page.sessionId) harnessSessionId.value = page.sessionId
@@ -149,7 +157,7 @@ async function pollReviewUntilTerminal(showCompletionMessage: boolean): Promise<
           actionError.value = ''
 
           if (review.status === 'completed') {
-            await fetchReviewEvents(true)
+            await fetchReviewEvents(false, COMPLETED_EVENT_PAGE_LIMIT)
             project.value = await getProject(projectId.value, controller.signal)
             await handleReviewCompleted(showCompletionMessage)
             return

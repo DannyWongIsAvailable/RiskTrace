@@ -31,6 +31,8 @@ import {
 import { findReviewResult, reviewResultExists, upsertReviewResult } from './result-repository'
 
 const RESULT_SCHEMA_VERSION = '1.0'
+const LIVE_EVENT_PAGE_LIMIT = 200
+const COMPLETED_EVENT_PAGE_LIMIT = 5000
 
 export async function startProjectReview(
   env: Env,
@@ -160,8 +162,12 @@ export async function getReviewEvents(
     )
   }
 
+  const maxEventPageLimit =
+    run.status === 'completed' ? COMPLETED_EVENT_PAGE_LIMIT : LIVE_EVENT_PAGE_LIMIT
+  const effectiveLimit = Math.max(1, Math.min(maxEventPageLimit, Math.trunc(limit)))
+
   const harness = new DeepSeekHarnessReviewProvider(env)
-  const page = await harness.getEvents(run.provider_execute_id, afterSeq, limit)
+  const page = await harness.getEvents(run.provider_execute_id, afterSeq, effectiveLimit)
   if (page.executeId !== run.provider_execute_id) {
     throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', 'DeepSeek Harness 返回了错误的 runId', 502)
   }

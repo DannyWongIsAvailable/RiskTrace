@@ -28,7 +28,7 @@ export const onRequestGet: PagesFunction<Env, 'projectId', RequestData> = async 
   const projectId = getPathParam(params, 'projectId')
   const url = new URL(request.url)
   const after = parseIntegerQuery(url.searchParams.get('after'), -1, -1, Number.MAX_SAFE_INTEGER, 'after')
-  const limit = parseIntegerQuery(url.searchParams.get('limit'), 100, 1, 200, 'limit')
+  const limit = parseIntegerQuery(url.searchParams.get('limit'), 100, 1, 5000, 'limit')
   const page = await getReviewEvents(env, projectId, after, limit)
 
   return success(

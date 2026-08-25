@@ -125,7 +125,7 @@ export function getProjectReviewEvents(
   return http.get<ReviewEventPage>(`/api/projects/${projectId}/review/events`, {
     query: { after: afterSeq, limit },
     signal,
-    timeoutMs: 20_000,
+    timeoutMs: limit > 200 ? 35_000 : 20_000,
     validate: isReviewEventPage,
   })
 }
