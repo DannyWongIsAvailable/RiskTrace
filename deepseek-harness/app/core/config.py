@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     harness_provider: str = "deepseek-official"
     harness_model: str = "deepseek-v4-flash"
 
+    harness_cordis: str | None = Field(
+      default=None,
+      alias="HARNESS_CORDIS"
+    )
+
     dsh_home: Path = Field(
         default=BASE_DIR / ".dsh",
         alias="DSH_HOME",

@@ -1016,6 +1016,7 @@ def run_review_detailed(
       session_root=str(settings.harness_session_root),
       api_key=api_key,
       base_url=settings.deepseek_base_url,
+      cordis=settings.harness_cordis,
     ) as harness:
 
       result = harness.run(
