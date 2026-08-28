@@ -10,6 +10,7 @@ import ProviderCheckView from '@/views/ProviderCheckView.vue'
 import ProjectReportView from '@/views/ProjectReportView.vue'
 import ProjectReviewView from '@/views/ProjectReviewView.vue'
 import ProjectUploadView from '@/views/ProjectUploadView.vue'
+import RiskFindingsView from '@/views/RiskFindingsView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -50,6 +51,22 @@ const router = createRouter({
               order: 20,
               icon: AppIcons.navigation.projects,
               description: '项目、材料与审查报告',
+            },
+          },
+        },
+        {
+          path: 'risk-findings',
+          name: 'risk-findings',
+          component: RiskFindingsView,
+          meta: {
+            title: '风险事项',
+            description: '查看并完成风险事项的处置与整改。',
+            navigation: {
+              group: 'main',
+              order: 30,
+              label: '风险事项',
+              icon: AppIcons.navigation.tasks,
+              description: '处置、整改与证明材料',
             },
           },
         },

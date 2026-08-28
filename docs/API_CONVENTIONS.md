@@ -16,6 +16,10 @@ GET    /api/projects/:projectId/review
 GET    /api/projects/:projectId/material-analysis
 GET    /api/projects/:projectId/report
 POST   /api/projects/:projectId/review/retry
+GET    /api/risk-findings
+PATCH  /api/risk-findings/:findingId
+POST   /api/risk-findings/:findingId/attachments/upload-sessions
+POST   /api/risk-findings/:findingId/attachments/:attachmentId/complete
 ```
 
 路径中尽量避免直接使用动作动词。
@@ -315,3 +319,25 @@ GET /api/projects/:projectId/review/events?after=-1&limit=100
 ```
 
 `SessionEvent` 还可能携带官方 envelope 的 `ignorable`、`sourceEventSeqs`、`surfaceOp`；调用方必须允许插件扩展新的 `type`，不得把事件类型写成封闭枚举后静默丢弃未知事件。
+
+
+## 12. 风险事项 MVP 接口
+
+风险事项由最终报告中的 `findings` 幂等同步生成，当前状态仅包含：
+
+```text
+pending    待处置与整改
+completed  已完成
+```
+
+`GET /api/risk-findings` 支持标准 `page`、`pageSize` 分页，并可通过 `status=pending|completed` 筛选。
+
+待处置与整改事项使用 `PATCH /api/risk-findings/:findingId` 一次性提交：
+
+- `dispositionMethod`：处置方式；
+- `responsiblePerson`：责任人；
+- `rectificationMeasures`：整改措施；
+- `rectificationDescription`：整改说明；
+- `rectifiedAt`：实际整改完成时间，传输层使用 ISO 8601。
+
+提交前必须至少存在一份 `uploaded` 状态的证明材料。证明材料采用两段式 R2 直传：先申请短时 PUT 地址，浏览器直传 R2，再调用 complete 接口确认对象存在与大小一致。MVP 不解析或校验证明材料内容。

@@ -21,6 +21,7 @@ export const MATERIAL_CATEGORIES = [
 ] as const
 export const COMPLETENESS_RESULTS = ['complete', 'incomplete', 'uncertain'] as const
 export const RISK_LEVELS = ['low', 'medium', 'high', 'critical'] as const
+export const RISK_FINDING_STATUSES = ['pending', 'completed'] as const
 export const REVIEW_STAGES = [
   'material_analysis_running',
   'material_analysis_completed',
@@ -35,6 +36,7 @@ export type ProjectStage = (typeof PROJECT_STAGES)[number]
 export type MaterialCategory = (typeof MATERIAL_CATEGORIES)[number]
 export type CompletenessResult = (typeof COMPLETENESS_RESULTS)[number]
 export type RiskLevel = (typeof RISK_LEVELS)[number]
+export type RiskFindingStatus = (typeof RISK_FINDING_STATUSES)[number]
 export type ReviewStage = (typeof REVIEW_STAGES)[number]
 export type ReviewStatus = 'reviewing' | 'completed' | 'failed'
 export type UploadStatus = 'uploading' | 'uploaded' | 'failed'
@@ -93,6 +95,40 @@ export interface ReviewRunRow {
   error_message: string | null
   started_at: string
   finished_at: string | null
+  updated_at: string
+}
+
+export interface RiskFindingRow {
+  id: string
+  project_id: string
+  review_run_id: string
+  source_finding_id: string
+  title: string
+  domain: string
+  risk_level: RiskLevel
+  description: string
+  recommendation: string
+  related_documents_json: string
+  status: RiskFindingStatus
+  disposition_method: string | null
+  responsible_person: string | null
+  rectification_measures: string | null
+  rectification_description: string | null
+  rectified_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RiskFindingAttachmentRow {
+  id: string
+  risk_finding_id: string
+  file_name: string
+  mime_type: string
+  size_bytes: number
+  r2_object_key: string
+  upload_status: 'uploading' | 'uploaded'
+  created_at: string
   updated_at: string
 }
 

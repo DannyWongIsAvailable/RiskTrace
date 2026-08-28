@@ -12,6 +12,10 @@ interface StoredResultRow {
   raw_output_object_key: string | null
 }
 
+interface StoredRiskAttachmentRow {
+  r2_object_key: string
+}
+
 interface ReviewStateRow {
   provider_status: ProviderStatus
 }
@@ -75,6 +79,24 @@ async function listProjectResultObjects(
   return result.results
 }
 
+
+async function listProjectRiskFindingObjects(
+  db: D1Database,
+  projectId: string,
+): Promise<StoredRiskAttachmentRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT risk_finding_attachments.r2_object_key
+       FROM risk_finding_attachments
+       INNER JOIN risk_findings ON risk_findings.id = risk_finding_attachments.risk_finding_id
+       WHERE risk_findings.project_id = ?`,
+    )
+    .bind(projectId)
+    .all<StoredRiskAttachmentRow>()
+
+  return result.results
+}
+
 async function assertReviewCanBeDeleted(db: D1Database, projectId: string): Promise<void> {
   const review = await db
     .prepare('SELECT provider_status FROM review_runs WHERE project_id = ?')
@@ -93,6 +115,7 @@ async function assertReviewCanBeDeleted(db: D1Database, projectId: string): Prom
 function collectObjectKeys(
   documents: StoredDocumentRow[],
   results: StoredResultRow[] = [],
+  riskAttachments: StoredRiskAttachmentRow[] = [],
 ): string[] {
   const keys = new Set<string>()
 
@@ -103,6 +126,10 @@ function collectObjectKeys(
 
   for (const result of results) {
     if (result.raw_output_object_key) keys.add(result.raw_output_object_key)
+  }
+
+  for (const attachment of riskAttachments) {
+    keys.add(attachment.r2_object_key)
   }
 
   return [...keys]
@@ -124,12 +151,13 @@ export async function deleteProjectWithFiles(
   await requireProject(env.risktrace_db, projectId)
   await assertReviewCanBeDeleted(env.risktrace_db, projectId)
 
-  const [documents, resultObjects] = await Promise.all([
+  const [documents, resultObjects, riskAttachments] = await Promise.all([
     listProjectDocuments(env.risktrace_db, projectId),
     listProjectResultObjects(env.risktrace_db, projectId),
+    listProjectRiskFindingObjects(env.risktrace_db, projectId),
   ])
 
-  const objectKeys = collectObjectKeys(documents, resultObjects)
+  const objectKeys = collectObjectKeys(documents, resultObjects, riskAttachments)
 
   const statements = await env.risktrace_db.batch([
     env.risktrace_db
@@ -167,9 +195,10 @@ export async function deleteProjectDocumentWithFile(
   await requireProject(env.risktrace_db, projectId)
   await assertReviewCanBeDeleted(env.risktrace_db, projectId)
 
-  const [documents, resultObjects] = await Promise.all([
+  const [documents, resultObjects, riskAttachments] = await Promise.all([
     listProjectDocuments(env.risktrace_db, projectId),
     listProjectResultObjects(env.risktrace_db, projectId),
+    listProjectRiskFindingObjects(env.risktrace_db, projectId),
   ])
   const document = documents.find((item) => item.id === documentId)
 
@@ -177,7 +206,7 @@ export async function deleteProjectDocumentWithFile(
     throw new AppError('DOCUMENT_NOT_FOUND', '未找到项目材料', 404)
   }
 
-  const objectKeys = collectObjectKeys([document], resultObjects)
+  const objectKeys = collectObjectKeys([document], resultObjects, riskAttachments)
 
   const remainingDocumentCount = documents.length - 1
   const nextState = getResetProjectState(remainingDocumentCount)

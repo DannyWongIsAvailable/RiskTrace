@@ -1,6 +1,6 @@
 # RiskTrace
 
-RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户填写项目标题并上传当前已有材料后，系统只创建一个 DeepSeek Harness Run；Pages Functions 持续读取同一个 Run 的状态与 Session Event，最终保存材料理解和合规审查报告。DeepSeek Harness 是唯一运行时，不再通过 `REVIEW_PROVIDER` 在 Mock / 星辰 / Harness 间切换。
+RiskTrace 是面向企业采购项目的智能合规审查与风险事项处置 Demo。用户填写项目标题并上传当前已有材料后，系统只创建一个 DeepSeek Harness Run；Pages Functions 持续读取同一个 Run 的状态与 Session Event，最终保存材料理解和合规审查报告。报告中的风险事项会同步进入独立风险事项页面，用户可以手工完成基础处置与整改并上传 R2 证明材料。DeepSeek Harness 仍是唯一 Agent Runtime，风险事项闭环本身不调用 AI。
 
 > 仓库地址：https://github.com/DannyWongIsAvailable/RiskTrace.git  
 > 线上地址：https://risktrace.pages.dev/
@@ -9,7 +9,7 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户填写�
 
 ## 当前 MVP 开发模式
 
-当前前端保留“审查总览 → 项目列表 → 新建项目 → 上传材料 → 执行过程 → 查看报告”主链页面。上传材料与 Harness 执行过程使用独立路由；审查开始后可从项目列表随时重新进入执行过程追溯 Session Event，也可在完成后独立查看报告。项目、文件和结果通过 Pages Functions、D1 与 R2 真实读写。`POST /api/projects/:projectId/uploads/complete` 只负责创建一次 DeepSeek Harness Run；浏览器随后通过 RiskTrace API 增量读取该 Run 的 Session Event，并以 Harness Trajectory 形式展示真实 Turn / Step / Assistant / Tool / Todo 轨迹。
+当前前端保留“审查总览 → 项目列表 → 新建项目 → 上传材料 → 执行过程 → 查看报告”审查主链，并增加独立“风险事项”页面承接报告后的基础处置与整改。上传材料与 Harness 执行过程使用独立路由；审查开始后可从项目列表随时重新进入执行过程追溯 Session Event，也可在完成后独立查看报告。项目、文件和结果通过 Pages Functions、D1 与 R2 真实读写。`POST /api/projects/:projectId/uploads/complete` 只负责创建一次 DeepSeek Harness Run；浏览器随后通过 RiskTrace API 增量读取该 Run 的 Session Event，并以 Harness Trajectory 形式展示真实 Turn / Step / Assistant / Tool / Todo 轨迹。
 
 工作过程可视化与事件投影约束见 `docs/RiskTrace_DeepSeek_Harness_工作过程可视化重构设计.md`。
 
@@ -25,6 +25,8 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户填写�
 → 同一 Harness Run 完成材料理解、自动分类、领域审查和报告聚合
 → Harness completed 后校验 materialAnalysis + finalReport 并保存 D1
 → 审查完成后继续保留该次 Session Trajectory 用于追溯
+→ 最终报告 findings 幂等同步为风险事项
+→ 待处置与整改 → 手工填写信息并上传 R2 证明材料 → 已完成
 ```
 
 整个流程不要求用户手工分类、确认材料理解结果或再次点击“发起审查”。一个审查尝试只创建一个 Harness Run；状态查询与 Event replay 都针对同一个 `provider_execute_id`，轮询不得创建第二次执行。
@@ -41,8 +43,11 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户填写�
 - Harness 运行期间展示真实 Session Event 工作轨迹，完成后继续保留轨迹并开放材料理解结果和最终报告；
 - 由路由 Agent 选择适用领域 Agent；
 - 领域 Agent 结合材料对象和原始文件执行审查；
-- 聚合 Agent 输出只读风险报告；
-- Pages Functions 校验模型输出后写入 D1。
+- 聚合 Agent 输出风险报告；
+- Pages Functions 校验模型输出后写入 D1，并将风险事项幂等同步到 `risk_findings`；
+- 风险事项页面以卡片列出全部风险事项；
+- 待处置与整改事项支持填写处置方式、责任人、整改措施、整改说明和整改完成时间；
+- 至少上传一份证明材料到私有 R2 后，可提交为已完成。
 
 当前版本暂不实现：
 
@@ -50,7 +55,7 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户填写�
 - 材料理解结果人工确认；
 - 复杂逐字段事实表和精细证据模型；
 - 规则配置中心；
-- 风险确认、误报驳回、补件任务、付款控制和处置闭环；
+- AI 复核、误报驳回、多级处置审批、补件任务、付款控制和复杂整改闭环；
 - 复杂组织、角色和权限体系；
 - 全量外部商业数据接口。
 
@@ -73,8 +78,8 @@ RiskTrace 是面向企业采购项目的智能合规审查 Demo。用户填写�
 Vue 3 Web 应用
         │ RiskTrace REST API
 Cloudflare Pages Functions
-        ├─ Cloudflare D1：项目、文件、审查运行、中间结果和最终报告
-        ├─ Cloudflare R2：原始材料、派生件和可选调试输出
+        ├─ Cloudflare D1：项目、文件、审查运行、中间结果、最终报告和风险事项
+        ├─ Cloudflare R2：原始材料、风险事项证明材料、派生件和可选调试输出
         └─ DeepSeek Harness adapter
                  │ POST /runs + GET /runs/{id} + GET /runs/{id}/events
           Python Harness Gateway
@@ -127,12 +132,13 @@ Pages Functions 负责项目创建、上传编排、R2 短时访问、创建唯�
 | `/projects/new` | 新建采购项目 | 填写项目标题并一次性上传材料 |
 | `/projects/:projectId/upload` | 项目材料上传 | 选择并上传项目材料，提交后进入独立执行过程页 |
 | `/projects/:projectId/review` | 合规审查执行过程 | 实时或历史回放 Session Event 工作过程，并在完成后展示材料理解结果 |
-| `/projects/:projectId/report` | 合规审查报告 | 展示只读风险报告和关联文件 |
+| `/projects/:projectId/report` | 合规审查报告 | 展示风险报告和关联文件 |
+| `/risk-findings` | 风险事项 | 卡片查看全部风险事项，完成基础处置、整改和证明材料留存 |
 | `/foundation` | 设计系统 | 仅开发环境使用的基础组件预览 |
 
-处置中心和规则中心不属于当前 Demo 范围，不应作为当前版本的业务导航或开发目标。
+当前 Demo 仅实现轻量风险事项闭环，不建设独立复杂处置中心或规则中心。风险事项状态固定为待处置与整改和已完成两个状态，不包含 AI 复核、多级审批和关闭回退。
 
-当前仓库已经完成前端工程底座、采购项目主流程、D1/R2 读写、DeepSeek Harness 异步 Run、Session Event replay、Trajectory 投影、结果校验和报告读取。
+当前仓库已经完成前端工程底座、采购项目主流程、D1/R2 读写、DeepSeek Harness 异步 Run、Session Event replay、Trajectory 投影、结果校验、报告读取，以及风险事项两状态处置整改 MVP。
 
 ## 7. 目录约定
 
@@ -221,6 +227,8 @@ pnpm db:migrate:local
 pnpm db:migrate:remote
 ```
 
+风险事项功能依赖 `migrations/0003_risk_findings_workflow.sql`。部署包含本功能的新代码前，应先执行远程 D1 迁移，再部署 Pages，避免新接口访问尚未创建的数据表。
+
 部署到 Cloudflare Pages：
 
 ```bash
@@ -237,7 +245,8 @@ pnpm cf:deploy
 - `docs/ICON_SYSTEM.md`：图标规范；
 - `docs/API_CONVENTIONS.md`：接口规范；
 - `docs/ERROR_HANDLING_AND_OBSERVABILITY.md`：错误处理与观测；
-- `docs/FILE_STRUCTURE.md`：目录职责。
+- `docs/FILE_STRUCTURE.md`：目录职责；
+- `docs/RISK_FINDING_WORKFLOW.md`：风险事项两状态 MVP、数据表、API 和 R2 证明材料流程。
 
 ## 12. 核心工程规则
 
@@ -250,6 +259,8 @@ pnpm cf:deploy
 - 前端不得直接访问数据库、对象存储或外部工作流；
 - 外部工作流输出必须经过字段、枚举、长度和文档归属校验；
 - 模型不得修改项目标题、文件名、`documentId`、R2 Key 或系统状态；
+- 风险事项处置与整改由用户手工提交，当前不调用 AI；
+- 风险事项证明材料必须先直传 R2 并完成上传确认，再允许将事项标记为已完成；
 - 优先复用 `src/components/common/` 和 `src/styles/tokens.css`；
 - 演示数据只能放在 `src/mocks/` 或明确的后端演示模块；
 - 数据页面必须覆盖加载、成功、空数据和错误状态；

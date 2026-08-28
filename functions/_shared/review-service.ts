@@ -29,6 +29,7 @@ import {
   parseProviderOutput,
 } from './review-result-validation'
 import { findReviewResult, reviewResultExists, upsertReviewResult } from './result-repository'
+import { syncRiskFindingsForReport } from './risk-finding-repository'
 
 const RESULT_SCHEMA_VERSION = '1.0'
 const LIVE_EVENT_PAGE_LIMIT = 200
@@ -401,6 +402,12 @@ async function persistFinalReport(
     schemaVersion: RESULT_SCHEMA_VERSION,
     result: report,
     rawOutputObjectKey,
+    now,
+  })
+  await syncRiskFindingsForReport(env.risktrace_db, {
+    reviewRunId: run.id,
+    projectId: run.project_id,
+    report,
     now,
   })
   await updateReviewState(env.risktrace_db, {

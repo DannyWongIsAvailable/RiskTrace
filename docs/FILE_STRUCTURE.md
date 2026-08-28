@@ -127,6 +127,8 @@ src/components/review/HarnessErrorActivity.vue
 src/components/review/HarnessTodoPlan.vue
 src/components/review/HarnessActivityInspector.vue
 src/components/review/review-activity-projector.ts
+src/components/risk-findings/RiskFindingCard.vue
+src/components/risk-findings/RiskFindingDispositionDialog.vue
 ```
 
 只在一个页面中使用且结构简单的内容，可以暂时保留在页面中；职责独立或明显会复用时再抽取。
@@ -270,7 +272,8 @@ functions/_shared/         后端共享响应、校验、数据库、文件服�
 - 可复用后端逻辑放入 `_shared`；
 - 数据库和安全逻辑不得放到前端；
 - 接口路径与文件结构保持可预测；
-- D1 结构变化通过迁移管理。
+- D1 结构变化通过迁移管理；
+- 风险事项领域后端逻辑放在 `functions/_shared/risk-finding-*.ts`，证明材料仍通过 R2 直传。
 
 ## 17. 新增目录规则
 
