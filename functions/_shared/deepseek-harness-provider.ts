@@ -2,6 +2,7 @@ import { AppError } from './errors'
 import type {
   CreateReviewRunInput,
   ProviderRunEvent,
+  ProviderEventView,
   ProviderRunEventPage,
   ProviderRunSnapshot,
   ReviewProvider,
@@ -69,11 +70,17 @@ export class DeepSeekHarnessReviewProvider implements ReviewProvider {
     executeId: string,
     afterSeq: number,
     limit = 100,
+    view: ProviderEventView = 'raw',
   ): Promise<ProviderRunEventPage> {
     const pageSize = Math.max(1, Math.min(MAX_EVENT_PAGE_SIZE, Math.trunc(limit)))
+    const query = new URLSearchParams({
+      after: String(afterSeq),
+      limit: String(pageSize),
+      view,
+    })
     const response = await this.requestJson(
       'GET',
-      `/runs/${encodeURIComponent(executeId)}/events?after=${encodeURIComponent(String(afterSeq))}&limit=${pageSize}`,
+      `/runs/${encodeURIComponent(executeId)}/events?${query.toString()}`,
       undefined,
       pageSize > 200 ? HISTORICAL_EVENTS_REQUEST_TIMEOUT_MS : EVENTS_REQUEST_TIMEOUT_MS,
     )

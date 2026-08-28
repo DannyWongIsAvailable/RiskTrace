@@ -1,6 +1,6 @@
 import { ApiError, http } from '@/api/request'
 import type { PageQuery } from '@/types/api'
-import type { ReviewEventPage } from '@/types/review-activity'
+import type { ReviewEventPage, ReviewEventView } from '@/types/review-activity'
 import type {
   CompleteUploadsResult,
   CreateProjectInput,
@@ -121,9 +121,10 @@ export function getProjectReviewEvents(
   afterSeq: number,
   signal?: AbortSignal,
   limit = 100,
+  view: ReviewEventView = 'trajectory',
 ): Promise<ReviewEventPage> {
   return http.get<ReviewEventPage>(`/api/projects/${projectId}/review/events`, {
-    query: { after: afterSeq, limit },
+    query: { after: afterSeq, limit, view },
     signal,
     timeoutMs: limit > 200 ? 35_000 : 20_000,
     validate: isReviewEventPage,

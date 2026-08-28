@@ -18,6 +18,10 @@ const props = defineProps<{
   finishedAt?: string | null
   projection: ReviewActivityProjection
   events: ReviewHarnessEvent[]
+  rawEvents: ReviewHarnessEvent[]
+  rawEventsHasMore: boolean
+  rawEventsLoading: boolean
+  rawEventsError?: string
   connectionState: ReviewConnectionState
   connectionMessage?: string
   reportReady: boolean
@@ -25,7 +29,7 @@ const props = defineProps<{
   runId?: string | null
   sessionId?: string | null
 }>()
-const emit = defineEmits<{ viewReport: [] }>()
+const emit = defineEmits<{ viewReport: []; loadRawEvents: [] }>()
 
 const activeView = ref<'trajectory' | 'events'>('trajectory')
 const selectedActivityId = ref<string>()
@@ -36,6 +40,13 @@ const isHistorical = computed(() => props.status !== 'reviewing')
 
 function selectActivity(activity: ReviewActivity): void {
   selectedActivityId.value = activity.id
+}
+
+function selectView(view: 'trajectory' | 'events'): void {
+  activeView.value = view
+  if (view === 'events' && props.rawEvents.length === 0 && !props.rawEventsLoading) {
+    emit('loadRawEvents')
+  }
 }
 </script>
 
@@ -60,7 +71,7 @@ function selectActivity(activity: ReviewActivity): void {
         class="harness-panel__tab"
         :class="{ 'is-active': activeView === 'trajectory' }"
         :aria-selected="activeView === 'trajectory'"
-        @click="activeView = 'trajectory'"
+        @click="selectView('trajectory')"
       >
         执行轨迹
       </button>
@@ -70,7 +81,7 @@ function selectActivity(activity: ReviewActivity): void {
         class="harness-panel__tab"
         :class="{ 'is-active': activeView === 'events' }"
         :aria-selected="activeView === 'events'"
-        @click="activeView = 'events'"
+        @click="selectView('events')"
       >
         原始事件
       </button>
@@ -113,10 +124,30 @@ function selectActivity(activity: ReviewActivity): void {
       <div class="harness-panel__section-head">
         <div>
           <strong>原始事件日志</strong>
-          <span>按 Session Event 序号查看浏览器安全裁剪后的事件数据。</span>
+          <span>按需分页读取浏览器安全裁剪后的 canonical Session Event，不影响执行轨迹回放。</span>
         </div>
+        <span class="harness-panel__raw-count">已载入 {{ props.rawEvents.length }} 条</span>
       </div>
-      <HarnessActivityInspector :events="props.events" />
+      <p v-if="props.rawEventsError" class="harness-panel__raw-error">
+        {{ props.rawEventsError }}
+      </p>
+      <HarnessActivityInspector :events="props.rawEvents" />
+      <div class="harness-panel__raw-actions">
+        <el-button
+          v-if="props.status === 'reviewing' || props.rawEvents.length === 0 || props.rawEventsHasMore"
+          :loading="props.rawEventsLoading"
+          @click="emit('loadRawEvents')"
+        >
+          {{
+            props.rawEvents.length === 0
+              ? '读取原始事件'
+              : props.rawEventsHasMore
+                ? '继续加载原始事件'
+                : '刷新原始事件'
+          }}
+        </el-button>
+        <span v-else>已加载当前可读取的全部原始事件</span>
+      </div>
     </section>
 
     <div v-if="props.status === 'reviewing' && props.events.length === 0" class="harness-panel__idle">
@@ -215,6 +246,27 @@ function selectActivity(activity: ReviewActivity): void {
 
 .harness-panel__events :deep(.harness-inspector) {
   margin-top: var(--rt-space-4);
+}
+
+.harness-panel__raw-count {
+  flex: 0 0 auto;
+  color: var(--rt-text-tertiary);
+  font-size: var(--rt-font-size-xs);
+}
+
+.harness-panel__raw-error {
+  margin: var(--rt-space-3) 0 0;
+  color: var(--rt-color-danger-600);
+  font-size: var(--rt-font-size-xs);
+}
+
+.harness-panel__raw-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--rt-space-4);
+  color: var(--rt-text-tertiary);
+  font-size: var(--rt-font-size-xs);
 }
 
 .harness-panel__idle,

@@ -4,6 +4,12 @@ import { success } from '../../../../_shared/http'
 import { getReviewEvents } from '../../../../_shared/review-service'
 import { getPathParam } from '../../../../_shared/route'
 
+function parseEventView(raw: string | null): 'raw' | 'trajectory' {
+  if (raw === null || raw === '' || raw === 'raw') return 'raw'
+  if (raw === 'trajectory') return 'trajectory'
+  throw new AppError('VALIDATION_FAILED', 'view 参数无效', 400)
+}
+
 function parseIntegerQuery(
   raw: string | null,
   fallback: number,
@@ -29,7 +35,8 @@ export const onRequestGet: PagesFunction<Env, 'projectId', RequestData> = async 
   const url = new URL(request.url)
   const after = parseIntegerQuery(url.searchParams.get('after'), -1, -1, Number.MAX_SAFE_INTEGER, 'after')
   const limit = parseIntegerQuery(url.searchParams.get('limit'), 100, 1, 5000, 'limit')
-  const page = await getReviewEvents(env, projectId, after, limit)
+  const view = parseEventView(url.searchParams.get('view'))
+  const page = await getReviewEvents(env, projectId, after, limit, view)
 
   return success(
     {

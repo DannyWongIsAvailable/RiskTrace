@@ -22,7 +22,7 @@ import {
   updateReviewState,
 } from './review-repository'
 import { DeepSeekHarnessReviewProvider } from './deepseek-harness-provider'
-import type { ProviderRunEventPage, ProviderRunSnapshot } from './review-provider'
+import type { ProviderEventView, ProviderRunEventPage, ProviderRunSnapshot } from './review-provider'
 import {
   normalizeMaterialAnalysis,
   normalizeReviewReport,
@@ -143,6 +143,7 @@ export async function getReviewEvents(
   projectId: string,
   afterSeq: number,
   limit = 100,
+  view: ProviderEventView = 'raw',
 ): Promise<ProviderRunEventPage & { reviewRunId: string }> {
   const run = await requireReviewRunByProject(env.risktrace_db, projectId)
   if (!run.provider_execute_id) {
@@ -163,11 +164,11 @@ export async function getReviewEvents(
   }
 
   const maxEventPageLimit =
-    run.status === 'completed' ? COMPLETED_EVENT_PAGE_LIMIT : LIVE_EVENT_PAGE_LIMIT
+    run.status === 'reviewing' ? LIVE_EVENT_PAGE_LIMIT : COMPLETED_EVENT_PAGE_LIMIT
   const effectiveLimit = Math.max(1, Math.min(maxEventPageLimit, Math.trunc(limit)))
 
   const harness = new DeepSeekHarnessReviewProvider(env)
-  const page = await harness.getEvents(run.provider_execute_id, afterSeq, effectiveLimit)
+  const page = await harness.getEvents(run.provider_execute_id, afterSeq, effectiveLimit, view)
   if (page.executeId !== run.provider_execute_id) {
     throw new AppError('WORKFLOW_PROVIDER_INVALID_RESPONSE', 'DeepSeek Harness 返回了错误的 runId', 502)
   }

@@ -1,5 +1,6 @@
 /** Harness event names are merge-extensible; unknown plugin event types must survive replay. */
 export type HarnessEventType = string
+export type ReviewEventView = 'trajectory' | 'raw'
 
 export interface ReviewHarnessEvent {
   seq: number

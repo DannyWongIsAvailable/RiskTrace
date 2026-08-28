@@ -19,6 +19,7 @@ const props = defineProps<{
 const emit = defineEmits<{ clearSelection: [] }>()
 
 const modeLabel = computed(() => (props.status === 'reviewing' ? '实时追踪' : '历史回放'))
+const todoProgressLabel = computed(() => (props.status === 'reviewing' ? '计划完成' : '计划最后记录'))
 const completedTodoCount = computed(() =>
   props.todos.filter((todo) => todo.status === 'completed').length,
 )
@@ -62,7 +63,7 @@ function formatDateTime(value?: string | null): string {
           <dd>{{ props.status === 'reviewing' ? '运行中' : formatDateTime(props.finishedAt) }}</dd>
         </div>
         <div>
-          <dt>计划完成</dt>
+          <dt>{{ todoProgressLabel }}</dt>
           <dd>{{ props.todos.length ? `${completedTodoCount}/${props.todos.length}` : '未提供 Todo' }}</dd>
         </div>
         <div>

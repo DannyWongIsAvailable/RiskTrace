@@ -53,6 +53,8 @@ export interface ProviderRunEvent {
   surfaceOp?: 'append' | { op: 'replace'; start: number; end: number }
 }
 
+export type ProviderEventView = 'raw' | 'trajectory'
+
 export interface ProviderRunEventPage {
   executeId: string
   sessionId?: string
@@ -70,5 +72,10 @@ export interface ReviewProvider {
   readonly name: ReviewProviderName
   createRun(input: CreateReviewRunInput): Promise<ProviderRunSnapshot>
   getRun?(executeId: string): Promise<ProviderRunSnapshot>
-  getEvents?(executeId: string, afterSeq: number, limit?: number): Promise<ProviderRunEventPage>
+  getEvents?(
+    executeId: string,
+    afterSeq: number,
+    limit?: number,
+    view?: ProviderEventView,
+  ): Promise<ProviderRunEventPage>
 }

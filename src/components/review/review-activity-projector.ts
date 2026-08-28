@@ -183,6 +183,20 @@ export function projectReviewActivity(events: readonly ReviewHarnessEvent[]): Re
       if (turn !== null && step !== null) {
         const boundary = ensureStep(ensureTurn(turns, turn), step)
         boundary.startedAt = event.time
+        const id = `assistant:${turn}:${step}`
+        if (!activities.has(id)) {
+          activities.set(id, {
+            id,
+            seq: event.seq,
+            eventSeqs: [event.seq],
+            kind: 'assistant',
+            turn,
+            step,
+            status: 'running',
+            title: 'AI 正在工作',
+            startedAt: event.time,
+          })
+        }
       }
       continue
     }
@@ -338,7 +352,9 @@ export function projectReviewActivity(events: readonly ReviewHarnessEvent[]): Re
         boundary.finishedAt = event.time
         const assistant = activities.get(`assistant:${turn}:${step}`)
         if (assistant?.status === 'running') {
+          assistant.eventSeqs.push(event.seq)
           assistant.status = 'completed'
+          assistant.title = 'AI 处理完成'
           assistant.finishedAt = event.time
           assistant.durationMs = Math.max(0, event.time - assistant.startedAt)
         }
@@ -356,7 +372,16 @@ export function projectReviewActivity(events: readonly ReviewHarnessEvent[]): Re
         boundary.status = turnEndStatus(reason)
         for (const activity of activities.values()) {
           if (activity.turn === turn && activity.status === 'running') {
-            activity.status = boundary.status === 'failed' ? 'failed' : 'interrupted'
+            activity.eventSeqs.push(event.seq)
+            activity.status =
+              boundary.status === 'failed'
+                ? 'failed'
+                : boundary.status === 'completed' && activity.kind === 'assistant'
+                  ? 'completed'
+                  : 'interrupted'
+            if (activity.kind === 'assistant' && activity.status === 'completed') {
+              activity.title = 'AI 处理完成'
+            }
             activity.finishedAt = event.time
             activity.durationMs = Math.max(0, event.time - activity.startedAt)
           }

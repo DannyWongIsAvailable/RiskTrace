@@ -43,7 +43,7 @@ const elapsed = computed(() => {
 const connectionLabel = computed(() => {
   if (isHistorical.value) {
     return props.eventCount > 0
-      ? `历史轨迹已载入 · ${props.eventCount} 条事件`
+      ? `历史轨迹已载入 · ${props.eventCount} 条关键事件`
       : '暂无可回放的 Harness 事件'
   }
   switch (props.connectionState) {
@@ -107,7 +107,7 @@ onBeforeUnmount(() => {
         <strong>{{ props.projection.stats.toolCallCount }}</strong>
       </div>
       <div class="harness-summary__metric">
-        <span>Event</span>
+        <span>轨迹事件</span>
         <strong>{{ props.eventCount }}</strong>
       </div>
     </div>

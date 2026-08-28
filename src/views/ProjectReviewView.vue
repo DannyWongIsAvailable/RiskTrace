@@ -21,6 +21,7 @@ const EVENT_POLL_INTERVAL_MS = 1250
 const STATUS_POLL_EVERY_TICKS = 2
 const EVENT_PAGE_LIMIT = 200
 const COMPLETED_EVENT_PAGE_LIMIT = 5000
+const RAW_EVENT_PAGE_LIMIT = 500
 
 const route = useRoute()
 const router = useRouter()
@@ -29,6 +30,11 @@ const project = ref<ProjectDetail>()
 const materialAnalysis = ref<MaterialAnalysis>()
 const reviewStatus = ref<ReviewStatusResponse>()
 const reviewEvents = ref<ReviewHarnessEvent[]>([])
+const rawReviewEvents = ref<ReviewHarnessEvent[]>([])
+const rawLastEventSeq = ref(-1)
+const rawEventsHasMore = ref(false)
+const rawEventsLoading = ref(false)
+const rawEventsError = ref('')
 const harnessRunId = ref<string | null>(null)
 const harnessSessionId = ref<string | null>(null)
 const reviewConnectionState = ref<ReviewConnectionState>('disconnected')
@@ -80,6 +86,11 @@ async function loadPage(): Promise<void> {
 
 function resetReviewTrajectory(): void {
   reviewEvents.value = []
+  rawReviewEvents.value = []
+  rawLastEventSeq.value = -1
+  rawEventsHasMore.value = false
+  rawEventsLoading.value = false
+  rawEventsError.value = ''
   harnessRunId.value = null
   harnessSessionId.value = null
   lastEventSeq.value = -1
@@ -89,8 +100,8 @@ function resetReviewTrajectory(): void {
 
 async function replayReviewEvents(): Promise<void> {
   resetReviewTrajectory()
-  if (project.value?.review?.status === 'completed') {
-    await fetchReviewEvents(false, COMPLETED_EVENT_PAGE_LIMIT)
+  if (project.value?.review?.status !== 'reviewing') {
+    await fetchReviewEvents(true, COMPLETED_EVENT_PAGE_LIMIT)
     return
   }
   await fetchReviewEvents(true)
@@ -112,6 +123,7 @@ async function fetchReviewEvents(
         lastEventSeq.value,
         controller.signal,
         pageLimit,
+        'trajectory',
       )
       if (page.runId) harnessRunId.value = page.runId
       if (page.sessionId) harnessSessionId.value = page.sessionId
@@ -131,11 +143,46 @@ async function fetchReviewEvents(
   }
 }
 
-function mergeEvents(incoming: ReviewHarnessEvent[]): void {
+function mergeEventList(
+  current: readonly ReviewHarnessEvent[],
+  incoming: readonly ReviewHarnessEvent[],
+): ReviewHarnessEvent[] {
   const merged = new Map<number, ReviewHarnessEvent>()
-  reviewEvents.value.forEach((event) => merged.set(event.seq, event))
+  current.forEach((event) => merged.set(event.seq, event))
   incoming.forEach((event) => merged.set(event.seq, event))
-  reviewEvents.value = [...merged.values()].sort((left, right) => left.seq - right.seq)
+  return [...merged.values()].sort((left, right) => left.seq - right.seq)
+}
+
+function mergeEvents(incoming: ReviewHarnessEvent[]): void {
+  reviewEvents.value = mergeEventList(reviewEvents.value, incoming)
+}
+
+async function loadMoreRawEvents(): Promise<void> {
+  if (!project.value?.review || rawEventsLoading.value || controller.signal.aborted) return
+
+  rawEventsLoading.value = true
+  rawEventsError.value = ''
+  try {
+    const page = await getProjectReviewEvents(
+      projectId.value,
+      rawLastEventSeq.value,
+      controller.signal,
+      RAW_EVENT_PAGE_LIMIT,
+      'raw',
+    )
+    if (page.runId) harnessRunId.value = page.runId
+    if (page.sessionId) harnessSessionId.value = page.sessionId
+    if (page.events.length > 0) {
+      rawReviewEvents.value = mergeEventList(rawReviewEvents.value, page.events)
+    }
+    rawLastEventSeq.value = Math.max(rawLastEventSeq.value, page.nextSeq)
+    rawEventsHasMore.value = page.hasMore
+  } catch (error) {
+    if (isCancelled(error)) return
+    rawEventsError.value = error instanceof Error ? error.message : '原始事件暂时无法读取'
+  } finally {
+    rawEventsLoading.value = false
+  }
 }
 
 async function pollReviewUntilTerminal(showCompletionMessage: boolean): Promise<void> {
@@ -157,7 +204,7 @@ async function pollReviewUntilTerminal(showCompletionMessage: boolean): Promise<
           actionError.value = ''
 
           if (review.status === 'completed') {
-            await fetchReviewEvents(false, COMPLETED_EVENT_PAGE_LIMIT)
+            await fetchReviewEvents(true, COMPLETED_EVENT_PAGE_LIMIT)
             project.value = await getProject(projectId.value, controller.signal)
             await handleReviewCompleted(showCompletionMessage)
             return
@@ -295,6 +342,10 @@ onBeforeUnmount(() => controller.abort())
           :finished-at="project.review.finishedAt"
           :projection="reviewProjection"
           :events="reviewEvents"
+          :raw-events="rawReviewEvents"
+          :raw-events-has-more="rawEventsHasMore"
+          :raw-events-loading="rawEventsLoading"
+          :raw-events-error="rawEventsError"
           :connection-state="reviewConnectionState"
           :connection-message="reviewConnectionMessage"
           :report-ready="reportReady"
@@ -302,6 +353,7 @@ onBeforeUnmount(() => controller.abort())
           :run-id="harnessRunId"
           :session-id="harnessSessionId"
           @view-report="goToReport"
+          @load-raw-events="loadMoreRawEvents"
         />
 
         <MaterialAnalysisPanel v-if="materialAnalysis" :analysis="materialAnalysis" />
