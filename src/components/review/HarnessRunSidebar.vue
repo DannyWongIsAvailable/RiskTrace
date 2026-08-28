@@ -19,9 +19,13 @@ const props = defineProps<{
 const emit = defineEmits<{ clearSelection: [] }>()
 
 const modeLabel = computed(() => (props.status === 'reviewing' ? '实时追踪' : '历史回放'))
-const todoProgressLabel = computed(() => (props.status === 'reviewing' ? '计划完成' : '计划最后记录'))
+const displayTodos = computed<ReviewTodoItem[]>(() =>
+  props.status === 'completed'
+    ? props.todos.map((todo) => ({ ...todo, status: 'completed' as const }))
+    : props.todos,
+)
 const completedTodoCount = computed(() =>
-  props.todos.filter((todo) => todo.status === 'completed').length,
+  displayTodos.value.filter((todo) => todo.status === 'completed').length,
 )
 
 function shortId(value?: string | null): string {
@@ -63,8 +67,8 @@ function formatDateTime(value?: string | null): string {
           <dd>{{ props.status === 'reviewing' ? '运行中' : formatDateTime(props.finishedAt) }}</dd>
         </div>
         <div>
-          <dt>{{ todoProgressLabel }}</dt>
-          <dd>{{ props.todos.length ? `${completedTodoCount}/${props.todos.length}` : '未提供 Todo' }}</dd>
+          <dt>计划完成</dt>
+          <dd>{{ displayTodos.length ? `${completedTodoCount}/${displayTodos.length}` : '未提供 Todo' }}</dd>
         </div>
         <div>
           <dt>Review Run</dt>
@@ -81,7 +85,7 @@ function formatDateTime(value?: string | null): string {
       </dl>
     </section>
 
-    <HarnessTodoPlan :todos="props.todos" />
+    <HarnessTodoPlan :todos="displayTodos" />
 
     <section class="harness-sidebar__section harness-sidebar__inspector">
       <div class="harness-sidebar__title-row">

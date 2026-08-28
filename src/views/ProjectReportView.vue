@@ -198,16 +198,16 @@ onBeforeUnmount(() => controller.abort())
 
             <div class="project-report__finding-grid">
               <div>
-                <span class="project-report__label">审查领域</span>
-                <p>{{ finding.domain }}</p>
-              </div>
-              <div>
                 <span class="project-report__label">风险说明</span>
                 <p>{{ finding.description }}</p>
               </div>
               <div>
                 <span class="project-report__label">建议</span>
                 <p>{{ finding.recommendation }}</p>
+              </div>
+              <div>
+                <span class="project-report__label">审查领域</span>
+                <p>{{ finding.domain }}</p>
               </div>
               <div>
                 <span class="project-report__label">关联文件</span>
