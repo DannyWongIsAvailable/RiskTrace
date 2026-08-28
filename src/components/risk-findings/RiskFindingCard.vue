@@ -126,7 +126,7 @@ function formatDateTime(value: string | null): string {
     <template v-if="finding.status === 'pending'" #footer>
       <div class="risk-finding-card__footer">
         <span class="rt-muted">填写处置与整改信息并上传证明材料后，即可完成该风险事项。</span>
-        <el-button type="primary" @click="emit('handle', finding)">填写处置与整改</el-button>
+        <el-button type="primary" @click="emit('handle', finding)">处置与整改</el-button>
       </div>
     </template>
   </BaseCard>
