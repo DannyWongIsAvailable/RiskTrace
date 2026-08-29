@@ -1,0 +1,11 @@
+[project]
+name = "deepseek-harness"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "deepseek-harness-sdk>=0.1.1rc1",
+    "fastapi>=0.141.1",
+    "pydantic-settings>=2.15.0",
+    "python-dotenv>=1.2.3",
+    "uvicorn[standard]>=0.52.4",
+]
