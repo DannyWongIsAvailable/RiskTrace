@@ -362,31 +362,6 @@ sudo systemctl restart cloudflared-quick
 
 ---
 
-## Provider Check FastAPI 失败
-
-第一步：
-
-```bash
-curl http://127.0.0.1:8000/healthz
-```
-
-第二步：
-
-```bash
-curl http://127.0.0.1:55555/quicktunnel
-```
-
-第三步：
-
-确认
-
-```text
-DEEPSEEK_HARNESS_BASE_URL
-```
-
-是否已更新为新的 Quick Tunnel 地址。
-
----
 
 # 十三、升级代码流程
 
@@ -447,7 +422,7 @@ curl http://127.0.0.1:55555/quicktunnel
 
 然后在 RiskTrace 页面执行：
 
-> **Provider 检查**
+
 
 确认：
 

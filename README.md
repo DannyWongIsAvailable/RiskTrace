@@ -289,7 +289,6 @@ RiskTrace Pages Functions 当前只依赖以下核心接口：
 | `GET` | `/runs/{runId}/events` | 按 `after` 增量读取 Session Event |
 | `GET` | `/healthz` | FastAPI 健康检查 |
 | `GET` | `/diagnostics/async-contract` | 低成本异步契约检查，不启动模型 |
-| `POST` | `/diagnostics/provider-check` | 真正启动一次最小 Harness 调用做端到端检查 |
 
 `POST /runs` 请求体固定使用：
 
@@ -435,7 +434,7 @@ LLM final response
 ├─ app/
 │  ├─ api/
 │  │  ├─ runs.py                 # /runs 与 /events
-│  │  └─ diagnostics.py          # async-contract / provider-check
+│  │  └─ diagnostics.py          # async-contract
 │  ├─ core/
 │  │  └─ config.py               # pydantic-settings
 │  ├─ services/
@@ -624,7 +623,7 @@ journalctl -u cloudflared-quick -n 100 --no-pager
 curl http://127.0.0.1:55555/quicktunnel
 ```
 
-如果前端 Provider Check 失败，优先按以下顺序检查：
+部署异常排查建议按以下顺序检查：
 
 ```text
 1. FastAPI /healthz
@@ -632,8 +631,7 @@ curl http://127.0.0.1:55555/quicktunnel
 3. 当前 Quick Tunnel hostname
 4. Pages DEEPSEEK_HARNESS_BASE_URL
 5. Pages DEEPSEEK_HARNESS_API_KEY 与 ECS HARNESS_API_KEY 是否一致
-6. /diagnostics/provider-check 是否能真正完成最小模型调用
-7. DeepSeek API Key / provider / model
+6. DeepSeek API Key / provider / model
 ```
 
 ---
@@ -909,10 +907,6 @@ Harness Run 由当前 FastAPI 进程内 `ThreadPoolExecutor` 执行。服务重�
 ### Runtime 当前按 Run 创建
 
 `run_review_detailed()` 每次执行都会进入新的 `DeepSeekHarness(...)` context，因此当前不是一个长期驻留、跨 Run 复用的 Harness runtime。独立 Run 使用独立 session，行为清晰，但会承担 runtime 启停成本。
-
-### Provider Check 与正式审查的 Cordis 路径不同
-
-正式审查会传入 `settings.harness_cordis`；当前最小 `/diagnostics/provider-check` 只验证 SDK/runtime/model 基础连通性，并未传入 RiskTrace Cordis composition。因此 Provider Check 成功不代表 MinerU skill、workflow/subagent 等正式审查能力全部正常。
 
 ---
 
