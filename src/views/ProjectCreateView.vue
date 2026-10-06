@@ -1,23 +1,15 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { onBeforeUnmount, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { createProject } from '@/api/modules'
-import { isApiError } from '@/api/request'
-import { PROJECTS_READ_ONLY } from '@/constants/system-mode'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const form = reactive({ projectTitle: '' })
 const submitting = ref(false)
 const submitError = ref('')
-const controller = new AbortController()
-
-if (PROJECTS_READ_ONLY) {
-  void router.replace({ name: 'projects' })
-}
 
 const rules: FormRules<typeof form> = {
   projectTitle: [
@@ -27,32 +19,8 @@ const rules: FormRules<typeof form> = {
 }
 
 async function handleSubmit(): Promise<void> {
-  if (PROJECTS_READ_ONLY) {
-    ElMessage.warning('当前系统已进入只读归档模式，仅支持查看历史项目。')
-    return
-  }
-  if (submitting.value) return
-  const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
-
-  submitting.value = true
-  submitError.value = ''
-  try {
-    const project = await createProject(
-      { projectTitle: form.projectTitle.trim() },
-      controller.signal,
-    )
-    ElMessage.success('采购项目已创建，请上传全部已有材料')
-    await router.push({ name: 'project-upload', params: { projectId: project.projectId } })
-  } catch (error) {
-    if (isApiError(error) && error.code === 'REQUEST_CANCELLED') return
-    submitError.value = error instanceof Error ? error.message : '采购项目创建失败'
-  } finally {
-    submitting.value = false
-  }
+  ElMessage.error('403 Forbidden')
 }
-
-onBeforeUnmount(() => controller.abort())
 </script>
 
 <template>
