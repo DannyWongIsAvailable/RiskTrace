@@ -11,8 +11,6 @@ import ProjectReviewView from '@/views/ProjectReviewView.vue'
 import ProjectUploadView from '@/views/ProjectUploadView.vue'
 import RiskFindingsView from '@/views/RiskFindingsView.vue'
 
-import { PROJECTS_READ_ONLY } from '@/constants/system-mode'
-
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -78,7 +76,6 @@ const router = createRouter({
           meta: {
             title: '新建采购项目',
             description: '填写项目标题并进入材料上传。',
-            disabledInReadOnly: true,
           },
         },
         {
@@ -88,7 +85,6 @@ const router = createRouter({
           meta: {
             title: '上传项目材料',
             description: '批量上传项目材料并生成报告。',
-            disabledInReadOnly: true,
           },
         },
         {
@@ -125,21 +121,9 @@ const router = createRouter({
   },
 })
 
-router.beforeEach((to) => {
-  if (PROJECTS_READ_ONLY && to.meta.disabledInReadOnly) {
-    return { name: 'projects' }
-  }
-})
-
 router.afterEach((to) => {
   const title = String(to.meta.title ?? 'RiskTrace')
   document.title = `${title} · RiskTrace`
-})
-
-router.beforeEach((to) => {
-  if (PROJECTS_READ_ONLY && to.meta.disabledInReadOnly) {
-    return { name: 'projects' }
-  }
 })
 
 export default router
