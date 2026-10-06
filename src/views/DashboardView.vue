@@ -172,6 +172,10 @@ function recentProjectRiskTone(row: unknown): StatusTone {
   return recentProjectRiskMeta(row)?.tone ?? 'neutral'
 }
 
+function rejectDisabledAction(): void {
+  ElMessage.error('403 Forbidden')
+}
+
 function openProject(project: DashboardRecentProject): void {
   let routeName: 'project-upload' | 'project-review' | 'project-report' = 'project-upload'
   if (project.status === 'completed') routeName = 'project-report'
@@ -237,7 +241,7 @@ onBeforeUnmount(() => loadController?.abort())
         >
           刷新
         </el-button>
-        <el-button type="primary" @click="$router.push({ name: 'project-create' })">
+        <el-button type="primary" @click="rejectDisabledAction">
           新建采购项目
         </el-button>
       </template>
@@ -347,7 +351,7 @@ onBeforeUnmount(() => loadController?.abort())
         </template>
 
         <template #emptyAction>
-          <el-button type="primary" @click="$router.push({ name: 'project-create' })">
+          <el-button type="primary" @click="rejectDisabledAction">
             新建采购项目
           </el-button>
         </template>
@@ -395,7 +399,7 @@ onBeforeUnmount(() => loadController?.abort())
           </el-table-column>
           <el-table-column label="操作" width="110" fixed="right">
             <template #default="{ row }">
-              <el-button type="primary" link @click="openProject(asRecentProject(row))">
+              <el-button type="primary" link @click="rejectDisabledAction">
                 {{ projectActionLabel(asRecentProject(row)) }}
               </el-button>
             </template>

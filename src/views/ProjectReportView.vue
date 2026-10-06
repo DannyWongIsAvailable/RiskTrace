@@ -4,7 +4,6 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
-  deleteProjectDocument,
   getProject,
   getProjectMaterialAnalysis,
   getProjectReport,
@@ -30,9 +29,6 @@ const materialAnalysis = ref<MaterialAnalysis>()
 const report = ref<ReviewReport>()
 const loading = ref(true)
 const loadError = ref('')
-const deleteDialogOpen = ref(false)
-const documentPendingDelete = ref<ProjectDocument>()
-const deletingDocumentId = ref('')
 const controller = new AbortController()
 const projectDocuments = computed(() => project.value?.documents ?? [])
 const materialsExpanded = ref(false)
@@ -76,31 +72,8 @@ async function loadReport(): Promise<void> {
   }
 }
 
-function requestDocumentDelete(document: ProjectDocument): void {
-  documentPendingDelete.value = document
-  deleteDialogOpen.value = true
-}
-
-async function confirmDocumentDelete(): Promise<void> {
-  const target = documentPendingDelete.value
-  if (!target || deletingDocumentId.value) return
-
-  deletingDocumentId.value = target.documentId
-  try {
-    await deleteProjectDocument(projectId.value, target.documentId, controller.signal)
-    deleteDialogOpen.value = false
-    documentPendingDelete.value = undefined
-    ElMessage.success('文件记录已删除，远端文件正在后台清理，原审查报告已失效')
-    await router.replace({ name: 'project-upload', params: { projectId: projectId.value } })
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '项目材料删除失败')
-  } finally {
-    deletingDocumentId.value = ''
-  }
-}
-
-function clearPendingDocumentDelete(): void {
-  if (!deletingDocumentId.value) documentPendingDelete.value = undefined
+function requestDocumentDelete(_document: ProjectDocument): void {
+  ElMessage.error('403 Forbidden')
 }
 
 function formatFileSize(size: number): string {
@@ -260,7 +233,6 @@ onBeforeUnmount(() => controller.abort())
                 type="danger"
                 link
                 :icon="AppIcons.action.delete"
-                :loading="deletingDocumentId === document.documentId"
                 @click="requestDocumentDelete(document)"
               >
                 删除
@@ -270,17 +242,6 @@ onBeforeUnmount(() => controller.abort())
         </div>
       </BaseCard>
     </template>
-
-    <ConfirmActionDialog
-      v-model="deleteDialogOpen"
-      title="删除项目材料"
-      :description="`删除“${documentPendingDelete?.fileName ?? ''}”后，材料记录将立即删除，远端文件将在后台清理，当前审查报告也会失效。`"
-      confirm-text="删除文件"
-      confirm-type="danger"
-      :loading="Boolean(deletingDocumentId)"
-      @confirm="confirmDocumentDelete"
-      @cancel="clearPendingDocumentDelete"
-    />
   </div>
 </template>
 

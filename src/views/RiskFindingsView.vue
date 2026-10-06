@@ -78,10 +78,8 @@ function handlePageSizeChange(value: number): void {
   void loadFindings()
 }
 
-function openDisposition(finding: RiskFinding): void {
-  selectedFinding.value = finding
-  uploadProgress.value = 0
-  dialogOpen.value = true
+function openDisposition(_finding: RiskFinding): void {
+  ElMessage.error('403 Forbidden')
 }
 
 async function handleDispositionSubmit(
