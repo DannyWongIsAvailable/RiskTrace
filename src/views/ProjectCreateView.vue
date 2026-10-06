@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 
 import { createProject } from '@/api/modules'
 import { isApiError } from '@/api/request'
+import { PROJECTS_READ_ONLY } from '@/constants/system-mode'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -13,6 +14,10 @@ const form = reactive({ projectTitle: '' })
 const submitting = ref(false)
 const submitError = ref('')
 const controller = new AbortController()
+
+if (PROJECTS_READ_ONLY) {
+  void router.replace({ name: 'projects' })
+}
 
 const rules: FormRules<typeof form> = {
   projectTitle: [
@@ -22,6 +27,10 @@ const rules: FormRules<typeof form> = {
 }
 
 async function handleSubmit(): Promise<void> {
+  if (PROJECTS_READ_ONLY) {
+    ElMessage.warning('当前系统已进入只读归档模式，仅支持查看历史项目。')
+    return
+  }
   if (submitting.value) return
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return

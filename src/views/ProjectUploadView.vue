@@ -14,6 +14,7 @@ import {
 import { isApiError } from '@/api/request'
 import { AppIcons } from '@/icons'
 import type { ProjectDetail } from '@/types/project'
+import { PROJECTS_READ_ONLY } from '@/constants/system-mode'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,8 +28,12 @@ const loadError = ref('')
 const actionError = ref('')
 const controller = new AbortController()
 
+if (PROJECTS_READ_ONLY) {
+  void router.replace({ name: 'projects' })
+}
+
 const canUpload = computed(
-  () =>
+  () => !PROJECTS_READ_ONLY &&
     !project.value?.review &&
     (project.value?.status === 'draft' || project.value?.status === 'uploading'),
 )
@@ -52,6 +57,10 @@ async function loadPage(): Promise<void> {
 }
 
 async function handleUpload(): Promise<void> {
+  if (PROJECTS_READ_ONLY) {
+    ElMessage.warning('当前系统已进入只读归档模式，仅支持查看历史项目。')
+    return
+  }
   if (!canUpload.value || uploading.value) return
 
   const selectedFiles = fileList.value.filter(
