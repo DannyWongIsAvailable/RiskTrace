@@ -3,24 +3,19 @@ import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { deleteProject, listProjects } from '@/api/modules'
+import { listProjects } from '@/api/modules'
 import { isApiError } from '@/api/request'
 import { AppIcons } from '@/icons'
-import { PROJECTS_READ_ONLY } from '@/constants/system-mode'
 import type { ProjectStage, ProjectStatus, ProjectSummary } from '@/types/project'
 import type { StatusTone } from '@/types/ui'
 
 const router = useRouter()
-
 const projects = ref<ProjectSummary[]>([])
 const loading = ref(false)
 const loadError = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
-const deleteDialogOpen = ref(false)
-const projectPendingDelete = ref<ProjectSummary>()
-const deletingProjectId = ref('')
 let loadController: AbortController | undefined
 
 const isEmpty = computed(() => !loading.value && !loadError.value && projects.value.length === 0)
@@ -78,7 +73,6 @@ function getProjectStageLabel(row: unknown): string {
 }
 
 function canUploadProject(row: unknown): boolean {
-  if (PROJECTS_READ_ONLY) return false
   const status = asProjectSummary(row).status
   return status === 'draft' || status === 'uploading'
 }
@@ -115,43 +109,10 @@ function openProjectReport(row: unknown): void {
   void router.push({ name: 'project-report', params: { projectId: project.projectId } })
 }
 
-function requestProjectDelete(row: unknown): void {
-  if (PROJECTS_READ_ONLY) {
-    ElMessage.warning('当前系统已进入只读归档模式，仅支持查看历史项目。')
-    return
-  }
-  projectPendingDelete.value = asProjectSummary(row)
-  deleteDialogOpen.value = true
+function showForbidden(): void {
+  ElMessage.error('403 Forbidden')
 }
 
-async function confirmProjectDelete(): Promise<void> {
-  const target = projectPendingDelete.value
-  if (!target || deletingProjectId.value) return
-
-  deletingProjectId.value = target.projectId
-  try {
-    await deleteProject(target.projectId)
-    deleteDialogOpen.value = false
-    projectPendingDelete.value = undefined
-    ElMessage.success('采购项目已删除，远端文件正在后台清理')
-
-    const nextTotal = Math.max(0, total.value - 1)
-    const maxPage = Math.max(1, Math.ceil(nextTotal / pageSize.value))
-    if (page.value > maxPage) {
-      page.value = maxPage
-    } else {
-      await loadProjects()
-    }
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '采购项目删除失败')
-  } finally {
-    deletingProjectId.value = ''
-  }
-}
-
-function clearPendingDelete(): void {
-  if (!deletingProjectId.value) projectPendingDelete.value = undefined
-}
 
 function formatDate(value: string): string {
   const date = new Date(value)
@@ -180,13 +141,13 @@ onBeforeUnmount(() => loadController?.abort())
   <div class="rt-page rt-page-stack">
     <PageHeader
       title="采购项目"
-      description="系统已进入只读归档模式，仅支持查看历史项目、审查过程与报告。"
+      description="创建采购项目、上传材料并持续查看自动合规审查进度与报告。"
     >
       <template #actions>
         <el-button :icon="AppIcons.action.refresh" :loading="loading" @click="handleRefresh">
           刷新
         </el-button>
-        <el-button v-if="!PROJECTS_READ_ONLY" type="primary" @click="$router.push({ name: 'project-create' })">
+        <el-button type="primary" @click="showForbidden">
           新建项目
         </el-button>
       </template>
@@ -204,7 +165,7 @@ onBeforeUnmount(() => loadController?.abort())
       @retry="loadProjects"
     >
       <template #emptyAction>
-        <el-button v-if="!PROJECTS_READ_ONLY" type="primary" @click="$router.push({ name: 'project-create' })">
+        <el-button type="primary" @click="showForbidden">
           新建项目
         </el-button>
       </template>
@@ -237,7 +198,7 @@ onBeforeUnmount(() => loadController?.abort())
         </el-table-column>
         <el-table-column label="操作" width="310" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="canUploadProject(row)" type="primary" link @click="openProjectUpload(row)">
+            <el-button v-if="canUploadProject(row)" type="primary" link @click="showForbidden">
               上传材料
             </el-button>
             <el-button v-if="canViewReview(row)" link @click="openProjectReview(row)">
@@ -247,12 +208,10 @@ onBeforeUnmount(() => loadController?.abort())
               查看报告
             </el-button>
             <el-button
-              v-if="!PROJECTS_READ_ONLY"
               type="danger"
               link
               :icon="AppIcons.action.delete"
-              :loading="deletingProjectId === row.projectId"
-              @click="requestProjectDelete(row)"
+              @click="showForbidden"
             >
               删除
             </el-button>
@@ -271,16 +230,6 @@ onBeforeUnmount(() => loadController?.abort())
       </template>
     </BaseTableCard>
 
-    <ConfirmActionDialog
-      v-model="deleteDialogOpen"
-      title="删除采购项目"
-      :description="`删除“${projectPendingDelete?.projectTitle ?? ''}”后，项目、文件记录和审查报告将立即删除，远端文件将在后台清理。`"
-      confirm-text="删除项目"
-      confirm-type="danger"
-      :loading="Boolean(deletingProjectId)"
-      @confirm="confirmProjectDelete"
-      @cancel="clearPendingDelete"
-    />
   </div>
 </template>
 
